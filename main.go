@@ -82,7 +82,7 @@ func main() {
 
 			trackIds := []spotify.ID{}
 
-			if strings.HasPrefix(m.Content, "https://open.spotify.com/album/") || strings.HasPrefix(m.Content, "spotify:album:") {
+			if strings.Contains(m.Content, "https://open.spotify.com/album/") || strings.Contains(m.Content, "spotify:album:") {
 				fmt.Println(id)
 				album, err := spotifyClient.GetAlbum(context.Background(), spotify.ID(id))
 
@@ -125,7 +125,7 @@ func main() {
 func extractID(link string) string {
 	// Define a regular expression pattern to match Spotify track IDs
 	// Spotify track IDs are 22 characters long and consist of uppercase letters, lowercase letters, and digits
-	regex := regexp.MustCompile(`^(?:https?://open\.spotify\.com/track/|https?://open\.spotify\.com/album/|spotify:track:|spotify:album:)([a-zA-Z0-9]+)`)
+	regex := regexp.MustCompile(`(?:https?://open\.spotify\.com/track/|https?://open\.spotify\.com/album/|spotify:track:|spotify:album:)([a-zA-Z0-9]+)`)
 	// Create a regular expression object
 
 	// Find the first match in the input link
