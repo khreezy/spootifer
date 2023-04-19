@@ -1,45 +1,59 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/zmb3/spotify"
+	"github.com/zmb3/spotify/v2"
+	spotifyauth "github.com/zmb3/spotify/v2/auth"
 	"golang.org/x/oauth2"
 )
 
-func main() {
-	authConfig := &oauth2.Config{
-		ClientID:     os.Getenv("CLIENT_ID"),
-		ClientSecret: os.Getenv("CLIENT_SECRET"),
-		RedirectURL:  "https://www.google.com",
-		Scopes:       []string{spotify.ScopePlaylistModifyPublic}, // List of required scopes
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  "https://accounts.spotify.com/authorize",
-			TokenURL: "https://accounts.spotify.com/api/token",
-		},
-	}
+const (
+	redirectURI = "http://localhost:8080/callback"
+	state       = "abc123"
+)
 
-	authURL := authConfig.AuthCodeURL("state", oauth2.AccessTypeOnline)
+var (
+	auth = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopePlaylistModifyPublic), spotifyauth.WithClientID(os.Getenv("CLIENT_ID")), spotifyauth.WithClientSecret(os.Getenv("CLIENT_SECRET")))
+	ch   = make(chan *spotify.Client)
+)
+
+func main() {
+	http.HandleFunc("/callback", completeAuth)
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		log.Println("Got request for:", r.URL.String())
+	})
+	go func() {
+		err := http.ListenAndServe(":8080", nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	// authConfig := &oauth2.Config{
+	// 	ClientID:     os.Getenv("CLIENT_ID"),
+	// 	ClientSecret: os.Getenv("CLIENT_SECRET"),
+	// 	RedirectURL:  redirectURI,
+	// 	Scopes:       []string{spotify.ScopePlaylistModifyPublic}, // List of required scopes
+	// 	Endpoint: oauth2.Endpoint{
+	// 		AuthURL:  "https://accounts.spotify.com/authorize",
+	// 		TokenURL: "https://accounts.spotify.com/api/token",
+	// 	},
+	// }
+
+	authURL := auth.AuthURL(state, oauth2.AccessTypeOnline)
 
 	fmt.Println("Please visit the following URL to authorize the application:")
 	fmt.Println(authURL)
 
-	fmt.Print("Enter the authorization code: ")
-	var code string
-	fmt.Scan(&code)
-
-	token, err := authConfig.Exchange(oauth2.NoContext, code)
-
-	if err != nil {
-		fmt.Println("blah")
-	}
-
-	spotifyClient := spotify.Authenticator{}.NewClient(token)
+	spotifyClient := <-ch
 
 	// auth.SetAuthInfo("YOUR_CLIENT_ID", "YOUR_CLIENT_SECRET") // Replace with your client ID and client secret
 
@@ -71,7 +85,7 @@ func main() {
 			// Add the track to the Spotify playlist
 			if trackID != "" {
 				fmt.Println(os.Getenv("PLAYLIST_ID"))
-				_, err := spotifyClient.AddTracksToPlaylist(spotify.ID(os.Getenv("PLAYLIST_ID")), spotify.ID(trackID))
+				_, err := spotifyClient.AddTracksToPlaylist(context.Background(), spotify.ID(os.Getenv("PLAYLIST_ID")), spotify.ID(trackID))
 				if err != nil {
 					log.Println("Failed to add track to Spotify playlist:", err)
 				} else {
@@ -92,6 +106,23 @@ func main() {
 	// Wait for the application to be terminated
 	fmt.Println("Bot is now running. Press CTRL-C to exit.")
 	<-make(chan struct{})
+}
+
+func completeAuth(w http.ResponseWriter, r *http.Request) {
+	tok, err := auth.Token(r.Context(), state, r)
+	if err != nil {
+		http.Error(w, "Couldn't get token", http.StatusForbidden)
+		log.Fatal(err)
+	}
+	if st := r.FormValue("state"); st != state {
+		http.NotFound(w, r)
+		log.Fatalf("State mismatch: %s != %s\n", st, state)
+	}
+
+	// use the token to get an authenticated client
+	client := spotify.New(auth.Client(r.Context(), tok))
+	fmt.Fprintf(w, "Login Completed!")
+	ch <- client
 }
 
 func extractTrackID(link string) string {
