@@ -59,7 +59,7 @@ func main() {
 		log.Fatal("Failed to create Discord session:", err)
 	}
 
-	dg.Identify.Intents = discordgo.IntentsMessageContent
+	dg.Identify.Intents = discordgo.IntentsAll
 
 	messageCreate := func(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// Check if the message contains a Spotify link
