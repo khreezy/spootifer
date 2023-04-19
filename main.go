@@ -75,13 +75,31 @@ func main() {
 		// Check if the message contains a Spotify link
 		fmt.Println("received message")
 		if strings.Contains(m.Content, "open.spotify.com") {
-			trackID := extractTrackID(m.Content)
+			id := extractID(m.Content)
 
-			fmt.Println(trackID)
+			fmt.Println(id)
 			// Add the track to the Spotify playlist
-			if trackID != "" {
+
+			trackIds := []spotify.ID{}
+
+			if strings.HasPrefix(m.Content, "https://open.spotify.com/album/") || strings.HasPrefix(m.Content, "spotify:album:") {
+				fmt.Println(id)
+				album, err := spotifyClient.GetAlbum(context.Background(), spotify.ID(id))
+
+				if err != nil {
+					log.Println("error fetching album: ", err)
+				}
+
+				for _, track := range album.Tracks.Tracks {
+					trackIds = append(trackIds, track.ID)
+				}
+			} else {
+				trackIds = append(trackIds, spotify.ID(id))
+			}
+
+			if len(trackIds) > 0 {
 				fmt.Println(os.Getenv("PLAYLIST_ID"))
-				_, err := spotifyClient.AddTracksToPlaylist(context.Background(), spotify.ID(os.Getenv("PLAYLIST_ID")), spotify.ID(trackID))
+				_, err := spotifyClient.AddTracksToPlaylist(context.Background(), spotify.ID(os.Getenv("PLAYLIST_ID")), trackIds...)
 				if err != nil {
 					log.Println("Failed to add track to Spotify playlist:", err)
 				} else {
@@ -104,23 +122,18 @@ func main() {
 	<-make(chan struct{})
 }
 
-func extractTrackID(link string) string {
+func extractID(link string) string {
 	// Define a regular expression pattern to match Spotify track IDs
 	// Spotify track IDs are 22 characters long and consist of uppercase letters, lowercase letters, and digits
-	regexPattern := `\/track\/([A-Za-z0-9]{22})|track\/([A-Za-z0-9]{22})|track:([A-Za-z0-9]{22})`
-
+	regex := regexp.MustCompile(`^(?:https?://open\.spotify\.com/track/|https?://open\.spotify\.com/album/|spotify:track:|spotify:album:)([a-zA-Z0-9]+)`)
 	// Create a regular expression object
-	regex := regexp.MustCompile(regexPattern)
 
 	// Find the first match in the input link
-	match := regex.FindStringSubmatch(link)
+	matches := regex.FindStringSubmatch(link)
 
-	// Extract the track ID from the match groups
-	for _, group := range match {
-		if group != "" {
-			// Return the matched track ID
-			return strings.ReplaceAll(group, "/track/", "")
-		}
+	fmt.Println(matches)
+	if len(matches) > 1 {
+		return matches[1]
 	}
 
 	// Return an empty string if no track ID was found
