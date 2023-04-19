@@ -24,7 +24,7 @@ func main() {
 		},
 	}
 
-	authURL := authConfig.AuthCodeURL("state", oauth2.AccessTypeOffline)
+	authURL := authConfig.AuthCodeURL("state", oauth2.AccessTypeOnline)
 
 	fmt.Println("Please visit the following URL to authorize the application:")
 	fmt.Println(authURL)
@@ -60,6 +60,7 @@ func main() {
 
 	messageCreate := func(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// Check if the message contains a Spotify link
+		fmt.Println("received message")
 		if strings.Contains(m.Content, "open.spotify.com") {
 			trackID := extractTrackID(m.Content)
 
