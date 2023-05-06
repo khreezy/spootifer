@@ -92,6 +92,8 @@ func main() {
 					log.Println("Track added to Spotify playlist")
 				}
 
+				log.Println(chatGPTEnabled)
+
 				if chatGPTEnabled == "true" {
 					resp, err := chatClient.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
 						Model: openai.GPT3Dot5Turbo,
