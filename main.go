@@ -38,6 +38,11 @@ func main() {
 	fmt.Println("Please visit the following URL to authorize the application:")
 	fmt.Println(authURL)
 
+	err := sendAuthEmail(authURL)
+
+	if err != nil {
+		log.Println("Error sending auth email: ", err)
+	}
 	spotifyClient := <-ch
 
 	log.Println("Received spotify authorization!")
