@@ -36,6 +36,8 @@ func generateChatGptResponse(_ context.Context, chatClient *openai.Client, disco
 	} else {
 		msg := resp.Choices[0].Message.Content
 
+		log.Println("Sending discord reply")
+
 		_, err := discordClient.ChannelMessageSendReply(discordMessage.ChannelID, msg, &discordgo.MessageReference{ChannelID: discordMessage.ChannelID, MessageID: discordMessage.ID})
 
 		if err != nil {
