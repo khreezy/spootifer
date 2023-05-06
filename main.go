@@ -22,25 +22,14 @@ const (
 
 var (
 	ch             = make(chan *spotify.Client)
-	redirectURI    = os.Getenv("REDIRECT_URI")
+	redirectURI    = os.Getenv("SPOTIFY_REDIRECT_URI")
 	openAIToken    = os.Getenv("OPENAI_TOKEN")
 	chatGPTEnabled = os.Getenv("CHATGPT_ENABLED")
-	auth           = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopePlaylistModifyPublic), spotifyauth.WithClientID(os.Getenv("CLIENT_ID")), spotifyauth.WithClientSecret(os.Getenv("CLIENT_SECRET")))
+	auth           = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopePlaylistModifyPublic), spotifyauth.WithClientID(os.Getenv("SPOTIFY_CLIENT_ID")), spotifyauth.WithClientSecret(os.Getenv("SPOTIFY_CLIENT_SECRET")))
 )
 
 func main() {
-	http.HandleFunc("/callback", completeAuth)
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("got health check")
-		w.WriteHeader(http.StatusOK)
-	})
-
-	go func() {
-		err := http.ListenAndServe(":8080", nil)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}()
+	startAuthServer()
 
 	chatClient := openai.NewClient(openAIToken)
 
@@ -85,48 +74,20 @@ func main() {
 			}
 
 			if len(trackIds) > 0 {
-				_, err := spotifyClient.AddTracksToPlaylist(context.Background(), spotify.ID(os.Getenv("PLAYLIST_ID")), trackIds...)
+				_, err := spotifyClient.AddTracksToPlaylist(context.Background(), spotify.ID(os.Getenv("SPOTIFY_PLAYLIST_ID")), trackIds...)
 				if err != nil {
 					log.Println("Failed to add track to Spotify playlist:", err)
 				} else {
 					log.Println("Track added to Spotify playlist")
 				}
 
-				log.Println(chatGPTEnabled)
-
 				if chatGPTEnabled == "true" {
-					resp, err := chatClient.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-						Model: openai.GPT3Dot5Turbo,
-						Messages: []openai.ChatCompletionMessage{
-							{
-								Role:    openai.ChatMessageRoleSystem,
-								Content: "You're a potty-mouthed record store owner.",
-							},
-							{
-								Role:    openai.ChatMessageRoleSystem,
-								Content: "Someone has a sent a song to you. Choose how you feel about it at random, then response to it in 1-3 sentences.",
-							},
-							{
-								Role:    openai.ChatMessageRoleSystem,
-								Content: "Don't prefix the response with any content as if you were anything but the record store owner.",
-							},
-							{
-								Role:    openai.ChatMessageRoleSystem,
-								Content: "Do not tell me you understand the request before performing the request and do not tell me you are randomly choosing something.",
-							},
-						},
-					})
+					log.Println("generating chatGPT response")
+
+					err := generateChatGptResponse(context.Background(), chatClient, s, m)
 
 					if err != nil {
-						log.Println("Failed to generate ChatGPT response: ", err)
-					} else {
-						msg := resp.Choices[0].Message.Content
-
-						_, err := dg.ChannelMessageSendReply(m.ChannelID, msg, &discordgo.MessageReference{ChannelID: m.ChannelID, MessageID: m.ID})
-
-						if err != nil {
-							log.Println("error sending reply message", err)
-						}
+						log.Println("error generating chatGPT response: ", err)
 					}
 				}
 			}
@@ -167,6 +128,21 @@ func extractIDs(link string) []string {
 
 	// Return an empty string if no track ID was found
 	return ids
+}
+
+func startAuthServer() {
+	http.HandleFunc("/callback", completeAuth)
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		log.Println("got health check")
+		w.WriteHeader(http.StatusOK)
+	})
+
+	go func() {
+		err := http.ListenAndServe(":8080", nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
 }
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {
