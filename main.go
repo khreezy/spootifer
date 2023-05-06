@@ -39,13 +39,6 @@ func main() {
 		}
 	}()
 
-	go func() {
-		err := http.ListenAndServe(":8081", nil)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}()
-
 	authURL := auth.AuthURL(state, oauth2.AccessTypeOnline)
 
 	fmt.Println("Please visit the following URL to authorize the application:")
@@ -117,15 +110,20 @@ func extractIDs(link string) []string {
 	// Create a regular expression object
 
 	// Find the first match in the input link
-	matches := regex.FindStringSubmatch(link)
+	matches := regex.FindAllStringSubmatch(link)
 
 	fmt.Println(matches)
-	if len(matches) > 1 {
-		return matches[1:]
+
+	ids := []string{}
+
+	for _, match := range matches {
+		if len(matches) > 1 {
+			ids = append(ids, matches[1])
+		}
 	}
 
 	// Return an empty string if no track ID was found
-	return []string{}
+	return ids
 }
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {
