@@ -117,8 +117,8 @@ func extractIDs(link string) []string {
 	ids := []string{}
 
 	for _, match := range matches {
-		if len(matches) > 1 {
-			ids = append(ids, matches[1])
+		if len(match) > 1 {
+			ids = append(ids, match[1])
 		}
 	}
 
