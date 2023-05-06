@@ -49,6 +49,8 @@ func main() {
 		log.Fatal("Failed to create Discord session:", err)
 	}
 
+	log.Println("Successfully authenticated with discord")
+
 	dg.Identify.Intents = discordgo.IntentsAll
 
 	messageCreate := func(s *discordgo.Session, m *discordgo.MessageCreate) {
