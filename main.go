@@ -137,6 +137,7 @@ func startAuthServer() {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	log.Println("Starting auth server on port 8080")
 	go func() {
 		err := http.ListenAndServe(":8080", nil)
 		if err != nil {
