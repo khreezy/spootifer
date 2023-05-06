@@ -4,9 +4,11 @@ import (
 	"context"
 	"github.com/bwmarrin/discordgo"
 	"github.com/sashabaranov/go-openai"
+	"log"
 )
 
 func generateChatGptResponse(_ context.Context, chatClient *openai.Client, discordClient *discordgo.Session, discordMessage *discordgo.MessageCreate) error {
+	log.Println("Sending chatGPT response")
 	resp, err := chatClient.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
 		Model: openai.GPT3Dot5Turbo,
 		Messages: []openai.ChatCompletionMessage{
