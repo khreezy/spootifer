@@ -43,6 +43,8 @@ func generateChatGptResponse(_ context.Context, chatClient *openai.Client, disco
 		if err != nil {
 			return err
 		}
+
+		log.Println("Send discord reply")
 	}
 
 	return nil
