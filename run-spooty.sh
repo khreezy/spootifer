@@ -1,2 +1,2 @@
-aws ssm get-parameter --with-decryption --name spootifer-env --region us-west-2 | jq '.Parameter.Value' > .env
+aws ssm get-parameter --with-decryption --name spootifer-env --region us-west-2 | jq -r '.Parameter.Value' > .env
 docker compose up --detached
