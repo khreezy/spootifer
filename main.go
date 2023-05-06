@@ -40,6 +40,8 @@ func main() {
 
 	spotifyClient := <-ch
 
+	log.Println("Received spotify authorization!")
+
 	// Create a new Discord session
 	dg, err := discordgo.New("Bot " + os.Getenv("DISCORD_BOT_TOKEN"))
 
@@ -103,7 +105,7 @@ func main() {
 	}
 
 	// Wait for the application to be terminated
-	fmt.Println("Bot is now running. Press CTRL-C to exit.")
+	log.Println("Bot is now running. Press CTRL-C to exit.")
 	<-make(chan struct{})
 }
 
@@ -138,6 +140,7 @@ func startAuthServer() {
 	})
 
 	log.Println("Starting auth server on port 8080")
+
 	go func() {
 		err := http.ListenAndServe(":8080", nil)
 		if err != nil {
