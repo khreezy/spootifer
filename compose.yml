@@ -1,5 +1,7 @@
 services:
   spootifer:
     image: public.ecr.aws/s1y2w7u7/spootifer:latest
+    ports:
+      - "8080:8080"
     env_file: 
       - .env
