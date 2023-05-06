@@ -67,9 +67,6 @@ func main() {
 		if strings.Contains(m.Content, "open.spotify.com") {
 			ids := extractIDs(m.Content)
 
-			fmt.Println(id)
-			// Add the track to the Spotify playlist
-
 			trackIds := []spotify.ID{}
 
 			if strings.Contains(m.Content, "https://open.spotify.com/album/") || strings.Contains(m.Content, "spotify:album:") {
@@ -112,7 +109,7 @@ func main() {
 	<-make(chan struct{})
 }
 
-func extractID(link string) []string {
+func extractIDs(link string) []string {
 	// Define a regular expression pattern to match Spotify track IDs
 	// Spotify track IDs are 22 characters long and consist of uppercase letters, lowercase letters, and digits
 	regex := regexp.MustCompile(`(?:https?://open\.spotify\.com/track/|https?://open\.spotify\.com/album/|spotify:track:|spotify:album:)([a-zA-Z0-9]+)`)
