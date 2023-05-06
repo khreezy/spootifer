@@ -21,10 +21,11 @@ const (
 )
 
 var (
-	ch          = make(chan *spotify.Client)
-	redirectURI = os.Getenv("REDIRECT_URI")
-	openAIToken = os.Getenv("OPENAI_TOKEN")
-	auth        = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopePlaylistModifyPublic), spotifyauth.WithClientID(os.Getenv("CLIENT_ID")), spotifyauth.WithClientSecret(os.Getenv("CLIENT_SECRET")))
+	ch             = make(chan *spotify.Client)
+	redirectURI    = os.Getenv("REDIRECT_URI")
+	openAIToken    = os.Getenv("OPENAI_TOKEN")
+	chatGPTEnabled = os.Getenv("CHATGPT_ENABLED")
+	auth           = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopePlaylistModifyPublic), spotifyauth.WithClientID(os.Getenv("CLIENT_ID")), spotifyauth.WithClientSecret(os.Getenv("CLIENT_SECRET")))
 )
 
 func main() {
@@ -91,33 +92,35 @@ func main() {
 					log.Println("Track added to Spotify playlist")
 				}
 
-				resp, err := chatClient.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-					Model: openai.GPT3Dot5Turbo,
-					Messages: []openai.ChatCompletionMessage{
-						{
-							Role:    openai.ChatMessageRoleSystem,
-							Content: "You're a potty-mouthed record store owner.",
+				if chatGPTEnabled == "true" {
+					resp, err := chatClient.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
+						Model: openai.GPT3Dot5Turbo,
+						Messages: []openai.ChatCompletionMessage{
+							{
+								Role:    openai.ChatMessageRoleSystem,
+								Content: "You're a potty-mouthed record store owner.",
+							},
+							{
+								Role:    openai.ChatMessageRoleSystem,
+								Content: "Someone has a sent a song to you. Choose how you feel about it at random, then response to it in 1-3 sentences.",
+							},
+							{
+								Role:    openai.ChatMessageRoleSystem,
+								Content: "Don't prefix the response with any content as if you were anything but the record store owner.",
+							},
 						},
-						{
-							Role:    openai.ChatMessageRoleSystem,
-							Content: "Someone has a sent a song to you. Choose how you feel about it at random, then response to it in 1-3 sentences.",
-						},
-						{
-							Role:    openai.ChatMessageRoleSystem,
-							Content: "Don't prefix the response with any content as if you were anything but the record store owner.",
-						},
-					},
-				})
-
-				if err != nil {
-					log.Println("Failed to generate ChatGPT response: ", err)
-				} else {
-					msg := resp.Choices[0].Message.Content
-
-					_, err := dg.ChannelMessageSendReply(m.ChannelID, msg, &discordgo.MessageReference{ChannelID: m.ChannelID, MessageID: m.ID})
+					})
 
 					if err != nil {
-						log.Println("error sending reply message", err)
+						log.Println("Failed to generate ChatGPT response: ", err)
+					} else {
+						msg := resp.Choices[0].Message.Content
+
+						_, err := dg.ChannelMessageSendReply(m.ChannelID, msg, &discordgo.MessageReference{ChannelID: m.ChannelID, MessageID: m.ID})
+
+						if err != nil {
+							log.Println("error sending reply message", err)
+						}
 					}
 				}
 			}
