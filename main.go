@@ -28,10 +28,18 @@ var (
 func main() {
 	http.HandleFunc("/callback", completeAuth)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Got request for:", r.URL.String())
+		log.Println("got health check")
+		w.WriteHeader(http.StatusOK)
 	})
 	go func() {
 		err := http.ListenAndServe(":8080", nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	go func() {
+		err := http.ListenAndServe(":8081", nil)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -57,7 +65,7 @@ func main() {
 		// Check if the message contains a Spotify link
 		fmt.Println("received message")
 		if strings.Contains(m.Content, "open.spotify.com") {
-			id := extractID(m.Content)
+			ids := extractIDs(m.Content)
 
 			fmt.Println(id)
 			// Add the track to the Spotify playlist
@@ -65,8 +73,7 @@ func main() {
 			trackIds := []spotify.ID{}
 
 			if strings.Contains(m.Content, "https://open.spotify.com/album/") || strings.Contains(m.Content, "spotify:album:") {
-				fmt.Println(id)
-				album, err := spotifyClient.GetAlbum(context.Background(), spotify.ID(id))
+				album, err := spotifyClient.GetAlbum(context.Background(), spotify.ID(ids[0]))
 
 				if err != nil {
 					log.Println("error fetching album: ", err)
@@ -76,11 +83,12 @@ func main() {
 					trackIds = append(trackIds, track.ID)
 				}
 			} else {
-				trackIds = append(trackIds, spotify.ID(id))
+				for _, id := range ids {
+					trackIds = append(trackIds, spotify.ID(id))
+				}
 			}
 
 			if len(trackIds) > 0 {
-				fmt.Println(os.Getenv("PLAYLIST_ID"))
 				_, err := spotifyClient.AddTracksToPlaylist(context.Background(), spotify.ID(os.Getenv("PLAYLIST_ID")), trackIds...)
 				if err != nil {
 					log.Println("Failed to add track to Spotify playlist:", err)
@@ -104,7 +112,7 @@ func main() {
 	<-make(chan struct{})
 }
 
-func extractID(link string) string {
+func extractID(link string) []string {
 	// Define a regular expression pattern to match Spotify track IDs
 	// Spotify track IDs are 22 characters long and consist of uppercase letters, lowercase letters, and digits
 	regex := regexp.MustCompile(`(?:https?://open\.spotify\.com/track/|https?://open\.spotify\.com/album/|spotify:track:|spotify:album:)([a-zA-Z0-9]+)`)
@@ -115,11 +123,11 @@ func extractID(link string) string {
 
 	fmt.Println(matches)
 	if len(matches) > 1 {
-		return matches[1]
+		return matches[1:]
 	}
 
 	// Return an empty string if no track ID was found
-	return ""
+	return []string{}
 }
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {
