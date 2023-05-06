@@ -110,7 +110,7 @@ func extractIDs(link string) []string {
 	// Create a regular expression object
 
 	// Find the first match in the input link
-	matches := regex.FindAllStringSubmatch(link)
+	matches, _ = := regex.FindAllStringSubmatch(link)
 
 	fmt.Println(matches)
 
