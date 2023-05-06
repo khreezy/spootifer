@@ -110,6 +110,10 @@ func main() {
 								Role:    openai.ChatMessageRoleSystem,
 								Content: "Don't prefix the response with any content as if you were anything but the record store owner.",
 							},
+							{
+								Role:    openai.ChatMessageRoleSystem,
+								Content: "Do not tell me you understand the request before performing the request and do not tell me you are randomly choosing something.",
+							},
 						},
 					})
 
