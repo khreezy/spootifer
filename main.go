@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/sashabaranov/go-openai"
 	"log"
 	"net/http"
 	"os"
@@ -22,22 +23,25 @@ const (
 var (
 	ch          = make(chan *spotify.Client)
 	redirectURI = os.Getenv("REDIRECT_URI")
+	openAIToken = os.Getenv("OPENAI_TOKEN")
 	auth        = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopePlaylistModifyPublic), spotifyauth.WithClientID(os.Getenv("CLIENT_ID")), spotifyauth.WithClientSecret(os.Getenv("CLIENT_SECRET")))
 )
 
 func main() {
-	fmt.Println(redirectURI)
 	http.HandleFunc("/callback", completeAuth)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("got health check")
 		w.WriteHeader(http.StatusOK)
 	})
+
 	go func() {
 		err := http.ListenAndServe(":8080", nil)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}()
+
+	chatClient := openai.NewClient(openAIToken)
 
 	authURL := auth.AuthURL(state, oauth2.AccessTypeOnline)
 
@@ -85,6 +89,36 @@ func main() {
 					log.Println("Failed to add track to Spotify playlist:", err)
 				} else {
 					log.Println("Track added to Spotify playlist")
+				}
+
+				resp, err := chatClient.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
+					Model: openai.GPT3Dot5Turbo,
+					Messages: []openai.ChatCompletionMessage{
+						{
+							Role:    openai.ChatMessageRoleSystem,
+							Content: "You're a potty-mouthed record store owner.",
+						},
+						{
+							Role:    openai.ChatMessageRoleSystem,
+							Content: "Someone has a sent a song to you. Choose how you feel about it at random, then response to it in 1-3 sentences.",
+						},
+						{
+							Role:    openai.ChatMessageRoleSystem,
+							Content: "Don't prefix the response with any content as if you were anything but the record store owner.",
+						},
+					},
+				})
+
+				if err != nil {
+					log.Println("Failed to generate ChatGPT response: ", err)
+				} else {
+					msg := resp.Choices[0].Message.Content
+
+					_, err := dg.ChannelMessageSendReply(m.ChannelID, msg, &discordgo.MessageReference{ChannelID: m.ChannelID, MessageID: m.ID})
+
+					if err != nil {
+						log.Println("error sending reply message", err)
+					}
 				}
 			}
 		}
