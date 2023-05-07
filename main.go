@@ -26,7 +26,7 @@ var (
 	openAIToken    = os.Getenv("OPENAI_TOKEN")
 	chatGPTEnabled = os.Getenv("CHATGPT_ENABLED")
 	auth           = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopePlaylistModifyPublic), spotifyauth.WithClientID(os.Getenv("SPOTIFY_CLIENT_ID")), spotifyauth.WithClientSecret(os.Getenv("SPOTIFY_CLIENT_SECRET")))
-	emojiID        = "1025618781206216744"
+	emojiID        = "\u2705"
 )
 
 func main() {
