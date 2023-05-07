@@ -26,6 +26,7 @@ var (
 	openAIToken    = os.Getenv("OPENAI_TOKEN")
 	chatGPTEnabled = os.Getenv("CHATGPT_ENABLED")
 	auth           = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopePlaylistModifyPublic), spotifyauth.WithClientID(os.Getenv("SPOTIFY_CLIENT_ID")), spotifyauth.WithClientSecret(os.Getenv("SPOTIFY_CLIENT_SECRET")))
+	emojiID        = "1025618781206216744"
 )
 
 func main() {
@@ -92,6 +93,13 @@ func main() {
 					log.Println("Failed to add track to Spotify playlist:", err)
 				} else {
 					log.Println("Track added to Spotify playlist")
+
+					err = s.MessageReactionAdd(m.ChannelID, m.MessageReference.MessageID, emojiID)
+
+					if err != nil {
+						log.Println("Error adding react emoji: ", err)
+
+					}
 				}
 
 				if chatGPTEnabled == "true" {
@@ -103,6 +111,8 @@ func main() {
 						log.Println("error generating chatGPT response: ", err)
 					}
 				}
+			}
+
 			}
 		}
 	}
