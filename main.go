@@ -98,7 +98,6 @@ func main() {
 
 					if err != nil {
 						log.Println("Error adding react emoji: ", err)
-
 					}
 				}
 
@@ -111,8 +110,6 @@ func main() {
 						log.Println("error generating chatGPT response: ", err)
 					}
 				}
-			}
-
 			}
 		}
 	}
