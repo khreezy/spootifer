@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/zmb3/spotify/v2"
@@ -88,7 +89,9 @@ func main() {
 			}
 
 			if len(trackIds) > 0 {
-				_, err := spotifyClient.AddTracksToPlaylist(context.Background(), spotify.ID(os.Getenv("SPOTIFY_PLAYLIST_ID")), trackIds...)
+				ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+				_, err := spotifyClient.AddTracksToPlaylist(ctx, spotify.ID(os.Getenv("SPOTIFY_PLAYLIST_ID")), trackIds...)
+
 				if err != nil {
 					log.Println("Failed to add track to Spotify playlist:", err)
 				} else {
