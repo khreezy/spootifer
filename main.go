@@ -94,7 +94,7 @@ func main() {
 				} else {
 					log.Println("Track added to Spotify playlist")
 
-					err = s.MessageReactionAdd(m.ChannelID, m.MessageReference.MessageID, emojiID)
+					err = dg.MessageReactionAdd(m.ChannelID, m.MessageReference.MessageID, emojiID)
 
 					if err != nil {
 						log.Println("Error adding react emoji: ", err)
