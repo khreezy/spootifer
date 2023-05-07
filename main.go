@@ -61,11 +61,14 @@ func main() {
 
 	messageCreate := func(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// Check if the message contains a Spotify link
-		fmt.Println("received message")
+		log.Println("Received discord message")
+
 		if strings.Contains(m.Content, "open.spotify.com") {
+			log.Println("Message contained spotify link")
+
 			ids := extractIDs(m.Content)
 
-			trackIds := []spotify.ID{}
+			var trackIds []spotify.ID
 
 			if strings.Contains(m.Content, "https://open.spotify.com/album/") || strings.Contains(m.Content, "spotify:album:") {
 				album, err := spotifyClient.GetAlbum(context.Background(), spotify.ID(ids[0]))

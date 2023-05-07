@@ -13,6 +13,7 @@ const (
 
 func sendAuthEmail(authURL string) error {
 	log.Println("Constructing email")
+
 	m := mail.NewV3Mail()
 
 	from := mail.NewEmail("Spooty", os.Getenv("SPOOTIFER_FROM_EMAIL"))
