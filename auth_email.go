@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/sendgrid/sendgrid-go"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
+	"log"
 	"os"
 )
 
@@ -11,6 +12,7 @@ const (
 )
 
 func sendAuthEmail(authURL string) error {
+	log.Println("Constructing email")
 	m := mail.NewV3Mail()
 
 	from := mail.NewEmail("Spooty", os.Getenv("SPOOTIFER_FROM_EMAIL"))
@@ -38,5 +40,11 @@ func sendAuthEmail(authURL string) error {
 
 	_, err := client.Send(m)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	log.Println("Successfully sent email")
+
+	return nil
 }

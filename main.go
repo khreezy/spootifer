@@ -43,6 +43,7 @@ func main() {
 	if err != nil {
 		log.Println("Error sending auth email: ", err)
 	}
+
 	spotifyClient := <-ch
 
 	log.Println("Received spotify authorization!")
