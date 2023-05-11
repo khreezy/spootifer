@@ -7,7 +7,7 @@ EXPOSE 8080
 EXPOSE 8081
 # Copy binaries from the previous build stages.
 FROM alpine
-COPY --from=flyio/litefs:0.4 /usr/local/bin/litefs /usr/local/bin/litefs
+COPY --from=flyio/litefs:main /usr/local/bin/litefs /usr/local/bin/litefs
 COPY --from=builder /spootifer/spootifer /spootifer/spootifer
 RUN apk add bash fuse3 sqlite ca-certificates curl
 
