@@ -7,7 +7,7 @@ processes = []
 
 [env]
   SENDGRID_TEMPLATE_NAME = "spootifer-auth"
-  SPOTIFY_REDIRECT_URI = "http://spootifer.burningdownthe.haus:8080/callback"
+  SPOTIFY_REDIRECT_URI = "http://spootifer.burningdownthe.haus/callback"
 [experimental]
   auto_rollback = true
 
