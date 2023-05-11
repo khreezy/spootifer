@@ -48,6 +48,7 @@ func main() {
 	}
 
 	dg.Identify.Intents = discordgo.IntentsAll
+	//dg.Identify.Shard = []
 
 	messageCreate := func(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// Check if the message contains a Spotify link
