@@ -8,14 +8,17 @@ phases:
     commands:
       - echo Logging in to Amazon ECR...
       - aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws/s1y2w7u7
+      - aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 235502856841.dkr.ecr.us-west-2.amazonaws.com
   build:
     commands:
       - echo Build started on `date`
       - echo Building the Docker image...          
       - docker build -t spootifer:latest .
       - docker tag spootifer:latest public.ecr.aws/s1y2w7u7/spootifer:latest
+      - docker tag spootifer:latest 235502856841.dkr.ecr.us-west-2.amazonaws.com/spootifer:latest
   post_build:
     commands:
       - echo Build completed on `date`
       - echo Pushing the Docker image...
       - docker push public.ecr.aws/s1y2w7u7/spootifer:latest
+      - docker push 235502856841.dkr.ecr.us-west-2.amazonaws.com/spootifer:latest

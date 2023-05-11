@@ -4,9 +4,11 @@ import (
 	"context"
 	"github.com/bwmarrin/discordgo"
 	"github.com/sashabaranov/go-openai"
+	"log"
 )
 
 func generateChatGptResponse(_ context.Context, chatClient *openai.Client, discordClient *discordgo.Session, discordMessage *discordgo.MessageCreate) error {
+	log.Println("Sending chatGPT response")
 	resp, err := chatClient.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
 		Model: openai.GPT3Dot5Turbo,
 		Messages: []openai.ChatCompletionMessage{
@@ -34,12 +36,18 @@ func generateChatGptResponse(_ context.Context, chatClient *openai.Client, disco
 	} else {
 		msg := resp.Choices[0].Message.Content
 
+		log.Println("Sending discord reply")
+
 		_, err := discordClient.ChannelMessageSendReply(discordMessage.ChannelID, msg, &discordgo.MessageReference{ChannelID: discordMessage.ChannelID, MessageID: discordMessage.ID})
 
 		if err != nil {
 			return err
 		}
+
+		log.Println("Sent discord reply")
 	}
+
+	log.Println("Sent ChatGPT discord response")
 
 	return nil
 }

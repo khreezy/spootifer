@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/zmb3/spotify/v2"
@@ -26,6 +27,7 @@ var (
 	openAIToken    = os.Getenv("OPENAI_TOKEN")
 	chatGPTEnabled = os.Getenv("CHATGPT_ENABLED")
 	auth           = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopePlaylistModifyPublic), spotifyauth.WithClientID(os.Getenv("SPOTIFY_CLIENT_ID")), spotifyauth.WithClientSecret(os.Getenv("SPOTIFY_CLIENT_SECRET")))
+	emojiID        = "\u2705"
 )
 
 func main() {
@@ -38,7 +40,15 @@ func main() {
 	fmt.Println("Please visit the following URL to authorize the application:")
 	fmt.Println(authURL)
 
+	err := sendAuthEmail(authURL)
+
+	if err != nil {
+		log.Println("Error sending auth email: ", err)
+	}
+
 	spotifyClient := <-ch
+
+	log.Println("Received spotify authorization!")
 
 	// Create a new Discord session
 	dg, err := discordgo.New("Bot " + os.Getenv("DISCORD_BOT_TOKEN"))
@@ -47,16 +57,21 @@ func main() {
 		log.Fatal("Failed to create Discord session:", err)
 	}
 
+	log.Println("Successfully authenticated with discord")
+
 	dg.Identify.Intents = discordgo.IntentsAll
 	//dg.Identify.Shard = []
 
 	messageCreate := func(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// Check if the message contains a Spotify link
-		fmt.Println("received message")
+		log.Println("Received discord message")
+
 		if strings.Contains(m.Content, "open.spotify.com") {
+			log.Println("Message contained spotify link")
+
 			ids := extractIDs(m.Content)
 
-			trackIds := []spotify.ID{}
+			var trackIds []spotify.ID
 
 			if strings.Contains(m.Content, "https://open.spotify.com/album/") || strings.Contains(m.Content, "spotify:album:") {
 				album, err := spotifyClient.GetAlbum(context.Background(), spotify.ID(ids[0]))
@@ -75,11 +90,19 @@ func main() {
 			}
 
 			if len(trackIds) > 0 {
-				_, err := spotifyClient.AddTracksToPlaylist(context.Background(), spotify.ID(os.Getenv("SPOTIFY_PLAYLIST_ID")), trackIds...)
+				ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+				_, err := spotifyClient.AddTracksToPlaylist(ctx, spotify.ID(os.Getenv("SPOTIFY_PLAYLIST_ID")), trackIds...)
+
 				if err != nil {
 					log.Println("Failed to add track to Spotify playlist:", err)
 				} else {
 					log.Println("Track added to Spotify playlist")
+
+					err = dg.MessageReactionAdd(m.ChannelID, m.ID, emojiID)
+
+					if err != nil {
+						log.Println("Error adding react emoji: ", err)
+					}
 				}
 
 				if chatGPTEnabled == "true" {
@@ -104,7 +127,7 @@ func main() {
 	}
 
 	// Wait for the application to be terminated
-	fmt.Println("Bot is now running. Press CTRL-C to exit.")
+	log.Println("Bot is now running. Press CTRL-C to exit.")
 	<-make(chan struct{})
 }
 
@@ -138,6 +161,8 @@ func startAuthServer() {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	log.Println("Starting auth server on port 8080")
+
 	go func() {
 		err := http.ListenAndServe(":8080", nil)
 		if err != nil {
@@ -158,7 +183,7 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// use the token to get an authenticated client
-	client := spotify.New(auth.Client(r.Context(), tok))
+	client := spotify.New(auth.Client(context.Background(), tok))
 	fmt.Fprintf(w, "Login Completed!")
 	ch <- client
 }
