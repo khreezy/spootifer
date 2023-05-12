@@ -1,7 +1,11 @@
 services:
   spootifer:
     image: public.ecr.aws/s1y2w7u7/spootifer:latest
+    volumes:
+      "db:~/spootifer/db"
     ports:
       - "8080:8080"
     env_file: 
       - .env
+volumes:
+  db:
