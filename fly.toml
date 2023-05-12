@@ -15,6 +15,10 @@ kill_timeout = "5s"
   SENDGRID_TEMPLATE_NAME = "spootifer-auth"
   SPOTIFY_REDIRECT_URI = "https://spootifer.burningdownthe.haus/callback"
 
+[mounts]
+  source = "litefs"
+  destination = "/var/lib/litefs"
+
 [[services]]
   protocol = "tcp"
   internal_port = 8080
