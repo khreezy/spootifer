@@ -9,7 +9,6 @@ import (
 	"github.com/zmb3/spotify/v2"
 	"gorm.io/gorm"
 	"log"
-	"os"
 	"time"
 )
 
@@ -210,11 +209,12 @@ func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordg
 
 				if len(trackIds) > 0 {
 					ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-					playlistID := spotify.ID(os.Getenv("SPOTIFY_PLAYLIST_ID"))
 
-					if guild.SpotifyPlaylistID != "" {
-						playlistID = spotify.ID(playlistID)
+					if guild.SpotifyPlaylistID == "" {
+						return
 					}
+
+					playlistID := spotify.ID(guild.SpotifyPlaylistID)
 
 					_, err := spotifyClient.AddTracksToPlaylist(ctx, playlistID, trackIds...)
 
