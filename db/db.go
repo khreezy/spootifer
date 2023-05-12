@@ -9,7 +9,7 @@ import (
 )
 
 func ConnectToDB() (*gorm.DB, error) {
-	db, err := gorm.Open(sqlite.Open("/litefs/spootifer.db?_pragma=journal_mode(wal)"), &gorm.Config{
+	db, err := gorm.Open(sqlite.Open("/litefs/spootifer.db?_journal_mode=WAL"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
 
