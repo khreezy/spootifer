@@ -1,1 +1,0 @@
-![Build](https://codebuild.us-west-2.amazonaws.com/badges?uuid=eyJlbmNyeXB0ZWREYXRhIjoiVFFpY2VOV0NZVkd2SHNCNm4zZ0xFSXE3TUpXN2RGeTdFMnF1WGs0OVpMSWZtdUtQRnF1WDFnVndKbkdSNnE5dlM3bzVpVjgrTDl6THUranUrMkord3hrPSIsIml2UGFyYW1ldGVyU3BlYyI6Im9yWHFIUHNCcjUzcnIva0siLCJtYXRlcmlhbFNldFNlcmlhbCI6MX0%3D&branch=master)
