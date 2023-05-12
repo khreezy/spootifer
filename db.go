@@ -6,7 +6,7 @@ import (
 )
 
 func connectToDB() (*sql.DB, error) {
-	db, err := sql.Open("sqlite", "./db/spootifer.db")
+	db, err := sql.Open("sqlite", "/litefs/spootifer.db")
 
 	if err != nil {
 		return nil, err

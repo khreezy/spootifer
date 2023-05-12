@@ -1,7 +1,7 @@
 FROM golang:1.20 AS builder
 WORKDIR /spootifer
-COPY go.mod go.sum ./
-COPY *.go ./
+COPY . ./
+#COPY **/*.go ./
 RUN go build -buildvcs=false -ldflags "-s -w -extldflags '-static'" -tags osusergo,netgo -o /spootifer .
 EXPOSE 8080
 EXPOSE 8081

@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"fmt"
+	spootiferspotify "github.com/khreezy/spootifer/spotify"
 	"github.com/sashabaranov/go-openai"
 	"log"
 	"net/http"
 	"os"
-	"regexp"
-	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -20,6 +20,8 @@ import (
 const (
 	state = "abc123"
 )
+
+var discordBotPublicKey = ed25519.PublicKey(os.Getenv("DISOCRD_BOT_PUBLIC_KEY"))
 
 var (
 	ch             = make(chan *spotify.Client)
@@ -66,14 +68,14 @@ func main() {
 		// Check if the message contains a Spotify link
 		log.Println("Received discord message")
 
-		if strings.Contains(m.Content, "open.spotify.com") {
+		if spootiferspotify.ContainsSpotifyLink(m.Content) {
 			log.Println("Message contained spotify link")
 
-			ids := extractIDs(m.Content)
+			ids := spootiferspotify.ExtractIDs(m.Content)
 
 			var trackIds []spotify.ID
 
-			if strings.Contains(m.Content, "https://open.spotify.com/album/") || strings.Contains(m.Content, "spotify:album:") {
+			if spootiferspotify.IsAlbum(m.Content) {
 				album, err := spotifyClient.GetAlbum(context.Background(), spotify.ID(ids[0]))
 
 				if err != nil {
@@ -131,34 +133,18 @@ func main() {
 	<-make(chan struct{})
 }
 
-func extractIDs(link string) []string {
-	// Define a regular expression pattern to match Spotify track IDs
-	// Spotify track IDs are 22 characters long and consist of uppercase letters, lowercase letters, and digits
-	regex := regexp.MustCompile(`(?:https?://open\.spotify\.com/track/|https?://open\.spotify\.com/album/|spotify:track:|spotify:album:)([a-zA-Z0-9]+)`)
-	// Create a regular expression object
-
-	// Find the first match in the input link
-	matches := regex.FindAllStringSubmatch(link, -1)
-
-	fmt.Println(matches)
-
-	ids := []string{}
-
-	for _, match := range matches {
-		if len(match) > 1 {
-			ids = append(ids, match[1])
-		}
-	}
-
-	// Return an empty string if no track ID was found
-	return ids
-}
-
 func startAuthServer() {
 	http.HandleFunc("/callback", completeAuth)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("got health check")
 		w.WriteHeader(http.StatusOK)
+	})
+	http.HandleFunc("/bot/interactions", func(w http.ResponseWriter, r *http.Request) {
+		if discordgo.VerifyInteraction(r, discordBotPublicKey) {
+			w.WriteHeader(http.StatusOK)
+		}
+
+		w.WriteHeader(http.StatusUnauthorized)
 	})
 
 	log.Println("Starting auth server on port 8081")
