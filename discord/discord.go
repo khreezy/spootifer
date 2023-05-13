@@ -174,7 +174,6 @@ func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordg
 			var trackIds []spotify.ID
 
 			for _, guild := range userGuilds {
-				log.Println("User auth: ", guild.User.SpotifyAuthToken)
 				spotifyClient, err := spootiferspotify.ClientFromDBToken(guild.User.SpotifyAuthToken)
 
 				if err != nil {
