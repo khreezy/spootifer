@@ -30,6 +30,13 @@ var (
 		{
 			Name:        "authorize-spotify",
 			Description: "Generate a link to authorize Spootifer to use your spotify data.",
+			Options:     []*discordgo.ApplicationCommandOption{
+				//{
+				//	Name:        "Spotify Playlist Link",
+				//	Description: "Playlist to link after authorizing.",
+				//	Type:        discordgo.ApplicationCommandOptionString,
+				//},
+			},
 		},
 		{
 			Name:        "register-spotify-playlist",
@@ -126,42 +133,22 @@ func NewAuthorizeSpotifyHandler(db *gorm.DB) func(s *discordgo.Session, i *disco
 
 		tx = db.Where(&spootiferdb.UserGuild{UserID: user.ID, DiscordGuildID: i.GuildID}).Attrs(&spootiferdb.UserGuild{DiscordGuildID: i.GuildID}).FirstOrCreate(guild)
 
-		if user.SpotifyAuthToken.SpotifyAccessToken != "" {
-			log.Println("User was already authorized")
+		authUrl := spootiferspotify.GenerateAuthURL(userId)
+		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: fmt.Sprintf("Please click this link to authorizer with spotify.\n%s", authUrl),
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
 
-			err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: "Thanks, you're already authorized!",
-					Flags:   discordgo.MessageFlagsEphemeral,
-				},
-			})
-
-			if err != nil {
-				log.Println("error responding to interaction: ", err)
-			}
-
-			return
-		} else {
-			log.Println("Need to authorize with user")
-
-			authUrl := spootiferspotify.GenerateAuthURL(userId)
-			err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: fmt.Sprintf("Please click this link to authorizer with spotify.\n%s", authUrl),
-					Flags:   discordgo.MessageFlagsEphemeral,
-				},
-			})
-
-			if err != nil {
-				log.Println("error responding to interaction: ", err)
-			}
-
-			return
+		if err != nil {
+			log.Println("error responding to interaction: ", err)
 		}
 
+		return
 	}
+
 }
 func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordgo.MessageCreate) {
 
@@ -187,8 +174,12 @@ func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordg
 			var trackIds []spotify.ID
 
 			for _, guild := range userGuilds {
-				log.Println("User auth: ", guild.User.SpotifyAuthToken.SpotifyExpiryTime)
-				spotifyClient := spootiferspotify.ClientFromDBToken(guild.User.SpotifyAuthToken)
+				log.Println("User auth: ", guild.User.SpotifyAuthToken)
+				spotifyClient, err := spootiferspotify.ClientFromDBToken(guild.User.SpotifyAuthToken)
+
+				if err != nil {
+					log.Println("Error getting client: ", err)
+				}
 
 				if spootiferspotify.IsAlbum(m.Content) {
 
@@ -211,6 +202,7 @@ func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordg
 					ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 
 					if guild.SpotifyPlaylistID == "" {
+						log.Println("Playlist ID was empty")
 						return
 					}
 
