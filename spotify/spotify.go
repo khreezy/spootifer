@@ -77,8 +77,12 @@ func GenerateAuthURL(state string) string {
 	return auth.AuthURL(state, oauth2.AccessTypeOnline)
 }
 
-func ClientFromDBToken(token spootiferdb.SpotifyAuthToken) *spotify.Client {
-	expiry, _ := time.Parse(token.SpotifyExpiryTime, time.DateTime)
+func ClientFromDBToken(token spootiferdb.SpotifyAuthToken) (*spotify.Client, error) {
+	expiry, err := time.Parse(time.RFC3339, token.SpotifyExpiryTime)
+
+	if err != nil {
+		return nil, err
+	}
 
 	tok := oauth2.Token{
 		RefreshToken: token.SpotifyRefreshToken,
@@ -87,5 +91,5 @@ func ClientFromDBToken(token spootiferdb.SpotifyAuthToken) *spotify.Client {
 		Expiry:       expiry,
 	}
 
-	return spotify.New(auth.Client(context.Background(), &tok))
+	return spotify.New(auth.Client(context.Background(), &tok)), nil
 }

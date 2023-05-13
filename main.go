@@ -129,7 +129,7 @@ func completeAuth(db *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
 		user.CreatedAt = time.Now().Format(time.DateTime)
 		user.SpotifyAuthToken.SpotifyRefreshToken = tok.RefreshToken
 		user.SpotifyAuthToken.UserId = user.ID
-		user.SpotifyAuthToken.SpotifyExpiryTime = tok.Expiry.Format(time.DateTime)
+		user.SpotifyAuthToken.SpotifyExpiryTime = tok.Expiry.Format(time.RFC3339)
 		user.SpotifyAuthToken.SpotifyAccessToken = tok.AccessToken
 		user.SpotifyAuthToken.SpotifyTokenType = tok.TokenType
 
