@@ -66,17 +66,12 @@ func main() {
 	dg.AddHandler(interactionHandler)
 
 	err = dg.Open()
+
 	if err != nil {
 		log.Fatal("Failed to open Discord connection:", err)
 	}
 
-	for _, v := range discord.Commands {
-		_, err := dg.ApplicationCommandCreate(dg.State.User.ID, "", v)
-
-		if err != nil {
-			log.Println("Error registering application command: ", err)
-		}
-	}
+	discord.UpdateApplicationCommands(dg)
 
 	// Open a connection to Discord
 
