@@ -7,6 +7,7 @@ import (
 	"github.com/zmb3/spotify/v2"
 	spotifyauth "github.com/zmb3/spotify/v2/auth"
 	"golang.org/x/oauth2"
+	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -41,8 +42,6 @@ func ExtractIDs(link string) []string {
 	// Find the first match in the input link
 	matches := regex.FindAllStringSubmatch(link, -1)
 
-	fmt.Println(matches)
-
 	ids := []string{}
 
 	for _, match := range matches {
@@ -51,7 +50,8 @@ func ExtractIDs(link string) []string {
 		}
 	}
 
-	// Return an empty string if no track ID was found
+	log.Println("Got spotify ids: ", ids)
+
 	return ids
 }
 
@@ -62,8 +62,6 @@ func ExtractPlaylistID(link string) string {
 
 	// Find the first match in the input link
 	matches := regex.FindStringSubmatch(link)
-
-	fmt.Println(matches)
 
 	if len(matches) > 1 {
 		return matches[1]
