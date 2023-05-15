@@ -135,12 +135,20 @@ func completeAuth(db *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
 
 		// use the token to get an authenticated client
 
-		tx = db.Save(&(user.SpotifyAuthToken))
+		err = spootiferdb.WriteSync(func() error {
+			tx = db.Save(&(user.SpotifyAuthToken))
+			if tx.Error != nil {
+				return tx.Error
+			}
+			return nil
+		})
 
-		if tx.Error != nil {
+		if err != nil {
 			fmt.Println("Error saving token to user: ", tx.Error)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
 		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Login Complete!"))
 	}
 }
