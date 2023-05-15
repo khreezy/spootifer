@@ -111,6 +111,19 @@ func NewRegisterPlaylistHandler(db *gorm.DB) func(s *discordgo.Session, i *disco
 	}
 }
 
+func respondToMessage(s *discordgo.Session, i *discordgo.Interaction, msg string) {
+	err := s.InteractionRespond(i, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: msg,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
+
+	if err != nil {
+		log.Println("error responding to interaction: ", err)
+	}
+}
 func NewAuthorizeSpotifyHandler(db *gorm.DB) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		userId := getUserId(i)
