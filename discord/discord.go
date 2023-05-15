@@ -87,9 +87,10 @@ func NewRegisterPlaylistHandler(db *gorm.DB) func(s *discordgo.Session, i *disco
 
 				for _, guild := range user.UserGuilds {
 					guild.SpotifyPlaylistID = playlistID
-					tx := db.Save(&guild)
 
-					if tx.Error != nil {
+					_, err := spootiferdb.SaveUserGuild(db, &guild)
+
+					if err != nil {
 						log.Println("Error updating spotify guild playlist for user", tx.Error)
 					} else {
 						err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{

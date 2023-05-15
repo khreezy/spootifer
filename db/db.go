@@ -71,3 +71,24 @@ func FirstOrCreateUserGuildWithGuildID(db *gorm.DB, userID int, discordGuildID s
 
 	return guild, nil
 }
+
+func SaveUserGuild(db *gorm.DB, userGuild *UserGuild) (*UserGuild, error) {
+	err := WriteSync(func() error {
+		tx := db.Save(userGuild)
+
+		if tx.Error != nil {
+			return tx.Error
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return userGuild, nil
+}
+
+
+}
