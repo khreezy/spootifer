@@ -53,6 +53,33 @@ var (
 	}
 )
 
+func UpdateApplicationCommands(s *discordgo.Session) {
+	for _, v := range Commands {
+		_, err := s.ApplicationCommandCreate(s.State.User.ID, "", v)
+
+		if err != nil {
+			log.Println("Error registering application command: ", err)
+		}
+	}
+
+	existingCmds, err := s.ApplicationCommands(s.State.User.ID, "")
+
+	if err != nil {
+		log.Println("Error listing existing application commands")
+		return
+	}
+
+	for _, cmd := range existingCmds {
+		if _, ok := ApplicationCommands[cmd.Name]; !ok {
+			err := s.ApplicationCommandDelete(s.State.User.ID, "", cmd.ID)
+
+			if err != nil {
+				log.Println("Error deleting application command ", cmd.Name, ":", err)
+			}
+		}
+	}
+}
+
 func NewInteractionsHandler(db *gorm.DB) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		log.Println("Received interaction: ", i.ApplicationCommandData().Name)
