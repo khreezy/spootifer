@@ -43,6 +43,8 @@ func main() {
 		log.Fatal("Failed to connect to db")
 	}
 
+	go spootiferdb.StartWriteThread()
+
 	//allocId, err := uuid.Parse(os.Getenv("FLY_ALLOC_ID"))
 	//
 	//var id int

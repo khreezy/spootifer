@@ -38,6 +38,8 @@ func FirstOrCreateUserWithDiscordID(db *gorm.DB, discordUserID string) (*User, e
 			return tx.Error
 		}
 
+		log.Println("Successfully got user")
+
 		return nil
 	})
 
@@ -49,6 +51,7 @@ func FirstOrCreateUserWithDiscordID(db *gorm.DB, discordUserID string) (*User, e
 		log.Println("record was not found")
 	}
 
+	log.Println("Found user")
 	return user, nil
 }
 
