@@ -58,7 +58,7 @@ func WriteAsync(writeFunc func() error) {
 	msg.writeAsync()
 }
 
-func StartWriteThread() {
+func processWrites() {
 	for msg := range writeChan {
 		if msg.errTopic != nil {
 			msg.errTopic <- msg.writeFunc()
@@ -70,5 +70,14 @@ func StartWriteThread() {
 				log.Println("Error processing write: ", err)
 			}
 		}
+
 	}
+}
+
+// StartWriteThread
+// We are using SQLite, and so we only support a single writer thread.
+// All writes should be sent to the channel that is read from by the
+// processWrites func.
+func StartWriteThread() {
+	go processWrites()
 }

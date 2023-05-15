@@ -93,21 +93,25 @@ func NewRegisterPlaylistHandler(db *gorm.DB) func(s *discordgo.Session, i *disco
 					if err != nil {
 						log.Println("Error updating spotify guild playlist for user", tx.Error)
 					} else {
-						err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-							Type: discordgo.InteractionResponseChannelMessageWithSource,
-							Data: &discordgo.InteractionResponseData{
-								Content: "Your playlist was registered for this server.",
-								Flags:   discordgo.MessageFlagsEphemeral,
-							},
-						})
-
-						if err != nil {
-							log.Println("error responding to interaction: ", err)
-						}
+						go respondToMessage(s, i.Interaction, "Your playlist was registered for this server.")
 					}
 				}
 			}
 		}
+	}
+}
+
+func respondToMessage(s *discordgo.Session, i *discordgo.Interaction, msg string) {
+	err := s.InteractionRespond(i, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: msg,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
+
+	if err != nil {
+		log.Println("error responding to interaction: ", err)
 	}
 }
 
@@ -133,19 +137,7 @@ func NewAuthorizeSpotifyHandler(db *gorm.DB) func(s *discordgo.Session, i *disco
 
 		authUrl := spootiferspotify.GenerateAuthURL(userId)
 
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Please click this link to authorizer with spotify.\n%s", authUrl),
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-
-		if err != nil {
-			log.Println("error responding to interaction: ", err)
-		}
-
-		return
+		go respondToMessage(s, i.Interaction, fmt.Sprintf("Please click this link to authorizer with spotify.\n%s", authUrl))
 	}
 
 }
@@ -176,48 +168,59 @@ func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordg
 					log.Println("Error getting client: ", err)
 				}
 
-				if spootiferspotify.IsAlbum(m.Content) {
+				if len(trackIds) == 0 {
 
-					album, err := spotifyClient.GetAlbum(context.Background(), spotify.ID(ids[0]))
+					if spootiferspotify.IsAlbum(m.Content) {
 
-					if err != nil {
-						log.Println("error fetching album: ", err)
-					}
-
-					for _, track := range album.Tracks.Tracks {
-						trackIds = append(trackIds, track.ID)
-					}
-				} else {
-					for _, id := range ids {
-						trackIds = append(trackIds, spotify.ID(id))
-					}
-				}
-
-				if len(trackIds) > 0 {
-					ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-
-					if guild.SpotifyPlaylistID == "" {
-						log.Println("Playlist ID was empty")
-						return
-					}
-
-					playlistID := spotify.ID(guild.SpotifyPlaylistID)
-
-					_, err := spotifyClient.AddTracksToPlaylist(ctx, playlistID, trackIds...)
-
-					if err != nil {
-						log.Println("Failed to add track to Spotify playlist:", err)
-					} else {
-						log.Println("Track added to Spotify playlist")
-
-						err = s.MessageReactionAdd(m.ChannelID, m.ID, emojiID)
+						album, err := spotifyClient.GetAlbum(context.Background(), spotify.ID(ids[0]))
 
 						if err != nil {
-							log.Println("Error adding react emoji: ", err)
+							log.Println("error fetching album: ", err)
+						}
+
+						for _, track := range album.Tracks.Tracks {
+							trackIds = append(trackIds, track.ID)
+						}
+					} else {
+						for _, id := range ids {
+							trackIds = append(trackIds, spotify.ID(id))
 						}
 					}
 				}
+
+				go FinishAddTrackToPlaylist(s, spotifyClient, trackIds, guild, m)
 			}
 		}
+	}
+}
+
+func FinishAddTrackToPlaylist(s *discordgo.Session, spotifyClient *spotify.Client, trackIDs []spotify.ID, guild spootiferdb.UserGuild, m *discordgo.MessageCreate) {
+	if len(trackIDs) > 0 {
+		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+
+		if guild.SpotifyPlaylistID == "" {
+			log.Println("Playlist ID was empty")
+			return
+		}
+
+		playlistID := spotify.ID(guild.SpotifyPlaylistID)
+
+		_, err := spotifyClient.AddTracksToPlaylist(ctx, playlistID, trackIDs...)
+
+		if err != nil {
+			log.Println("Failed to add track to Spotify playlist:", err)
+		} else {
+			log.Println("Track added to Spotify playlist")
+
+			AddReactionToMessage(s, m.ChannelID, m.ID, emojiID)
+		}
+	}
+}
+
+func AddReactionToMessage(s *discordgo.Session, channelId, messageID, emojiID string) {
+	err := s.MessageReactionAdd(channelId, messageID, emojiID)
+
+	if err != nil {
+		log.Println("Error adding react emoji: ", err)
 	}
 }
