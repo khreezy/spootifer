@@ -43,7 +43,7 @@ func main() {
 		log.Fatal("Failed to connect to db")
 	}
 
-	go spootiferdb.StartWriteThread()
+	spootiferdb.StartWriteThread()
 
 	//allocId, err := uuid.Parse(os.Getenv("FLY_ALLOC_ID"))
 	//
@@ -128,7 +128,7 @@ func completeAuth(db *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		user.CreatedAt = time.Now().Format(time.DateTime)
+		user.CreatedAt = time.Now().Format(time.RFC3339)
 		user.SpotifyAuthToken.SpotifyRefreshToken = tok.RefreshToken
 		user.SpotifyAuthToken.UserId = user.ID
 		user.SpotifyAuthToken.SpotifyExpiryTime = tok.Expiry.Format(time.RFC3339)
