@@ -150,9 +150,6 @@ func NewAuthorizeSpotifyHandler(db *gorm.DB) func(s *discordgo.Session, i *disco
 
 }
 func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordgo.MessageCreate) {
-
-	//spotifyClient := spootiferspotify.InitiateAuth(spotifyAuthChannel)
-
 	return func(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// Check if the message contains a Spotify link
 		log.Println("Received discord message")

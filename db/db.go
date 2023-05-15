@@ -90,5 +90,18 @@ func SaveUserGuild(db *gorm.DB, userGuild *UserGuild) (*UserGuild, error) {
 	return userGuild, nil
 }
 
+func SaveSpotifyAuthToken(db *gorm.DB, auth *SpotifyAuthToken) (*SpotifyAuthToken, error) {
+	err := WriteSync(func() error {
+		tx := db.Save(auth)
+		if tx.Error != nil {
+			return tx.Error
+		}
+		return nil
+	})
 
+	if err != nil {
+		return nil, err
+	}
+
+	return auth, nil
 }
