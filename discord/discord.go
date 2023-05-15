@@ -93,17 +93,7 @@ func NewRegisterPlaylistHandler(db *gorm.DB) func(s *discordgo.Session, i *disco
 					if err != nil {
 						log.Println("Error updating spotify guild playlist for user", tx.Error)
 					} else {
-						err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-							Type: discordgo.InteractionResponseChannelMessageWithSource,
-							Data: &discordgo.InteractionResponseData{
-								Content: "Your playlist was registered for this server.",
-								Flags:   discordgo.MessageFlagsEphemeral,
-							},
-						})
-
-						if err != nil {
-							log.Println("error responding to interaction: ", err)
-						}
+						go respondToMessage(s, i.Interaction, "Your playlist was registered for this server.")
 					}
 				}
 			}
@@ -124,6 +114,7 @@ func respondToMessage(s *discordgo.Session, i *discordgo.Interaction, msg string
 		log.Println("error responding to interaction: ", err)
 	}
 }
+
 func NewAuthorizeSpotifyHandler(db *gorm.DB) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		userId := getUserId(i)
@@ -146,19 +137,7 @@ func NewAuthorizeSpotifyHandler(db *gorm.DB) func(s *discordgo.Session, i *disco
 
 		authUrl := spootiferspotify.GenerateAuthURL(userId)
 
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Please click this link to authorizer with spotify.\n%s", authUrl),
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-
-		if err != nil {
-			log.Println("error responding to interaction: ", err)
-		}
-
-		return
+		go respondToMessage(s, i.Interaction, fmt.Sprintf("Please click this link to authorizer with spotify.\n%s", authUrl))
 	}
 
 }
