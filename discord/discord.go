@@ -196,13 +196,13 @@ func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordg
 					}
 				}
 
-				go FinishAddTrackToPlaylist(context.Background(), s, spotifyClient, trackIds, guild, m)
+				go FinishAddTrackToPlaylist(s, spotifyClient, trackIds, guild, m)
 			}
 		}
 	}
 }
 
-func FinishAddTrackToPlaylist(ctx context.Context, s *discordgo.Session, spotifyClient *spotify.Client, trackIDs []spotify.ID, guild spootiferdb.UserGuild, m *discordgo.MessageCreate) {
+func FinishAddTrackToPlaylist(s *discordgo.Session, spotifyClient *spotify.Client, trackIDs []spotify.ID, guild spootiferdb.UserGuild, m *discordgo.MessageCreate) {
 	if len(trackIDs) > 0 {
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 
