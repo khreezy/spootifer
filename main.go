@@ -43,6 +43,8 @@ func main() {
 		log.Fatal("Failed to connect to db")
 	}
 
+	go spootiferdb.StartWriteThread()
+
 	//allocId, err := uuid.Parse(os.Getenv("FLY_ALLOC_ID"))
 	//
 	//var id int
@@ -135,12 +137,14 @@ func completeAuth(db *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
 
 		// use the token to get an authenticated client
 
-		tx = db.Save(&(user.SpotifyAuthToken))
+		_, err = spootiferdb.SaveSpotifyAuthToken(db, &(user.SpotifyAuthToken))
 
-		if tx.Error != nil {
+		if err != nil {
 			fmt.Println("Error saving token to user: ", tx.Error)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
 		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Login Complete!"))
 	}
 }

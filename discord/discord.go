@@ -87,9 +87,10 @@ func NewRegisterPlaylistHandler(db *gorm.DB) func(s *discordgo.Session, i *disco
 
 				for _, guild := range user.UserGuilds {
 					guild.SpotifyPlaylistID = playlistID
-					tx := db.Save(&guild)
 
-					if tx.Error != nil {
+					_, err := spootiferdb.SaveUserGuild(db, &guild)
+
+					if err != nil {
 						log.Println("Error updating spotify guild playlist for user", tx.Error)
 					} else {
 						err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -112,29 +113,27 @@ func NewRegisterPlaylistHandler(db *gorm.DB) func(s *discordgo.Session, i *disco
 
 func NewAuthorizeSpotifyHandler(db *gorm.DB) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		user := &spootiferdb.User{}
-
-		log.Println("Looking up user")
-
 		userId := getUserId(i)
 
-		tx := db.Where(&spootiferdb.User{DiscordUserID: userId}).FirstOrCreate(user)
+		user, err := spootiferdb.FirstOrCreateUserWithDiscordID(db, userId)
 
-		if tx.Error != nil && tx.Error != gorm.ErrRecordNotFound {
-			log.Println("Error querying db: ", tx.Error)
+		if err != nil {
+			log.Println("error getting or creating user: ", err)
 			return
 		}
 
-		if tx.Error == gorm.ErrRecordNotFound {
-			log.Println("record was not found")
+		userGuild, err := spootiferdb.FirstOrCreateUserGuildWithGuildID(db, user.ID, i.GuildID)
+
+		if err != nil {
+			log.Println("Error creating user guild: ", err)
+			return
 		}
 
-		guild := &spootiferdb.UserGuild{}
-
-		tx = db.Where(&spootiferdb.UserGuild{UserID: user.ID, DiscordGuildID: i.GuildID}).Attrs(&spootiferdb.UserGuild{DiscordGuildID: i.GuildID}).FirstOrCreate(guild)
+		log.Printf("Got user guild for user ID %d and guild ID %s", userGuild.UserID, userGuild.DiscordGuildID)
 
 		authUrl := spootiferspotify.GenerateAuthURL(userId)
-		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+
+		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				Content: fmt.Sprintf("Please click this link to authorizer with spotify.\n%s", authUrl),
@@ -151,9 +150,6 @@ func NewAuthorizeSpotifyHandler(db *gorm.DB) func(s *discordgo.Session, i *disco
 
 }
 func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordgo.MessageCreate) {
-
-	//spotifyClient := spootiferspotify.InitiateAuth(spotifyAuthChannel)
-
 	return func(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// Check if the message contains a Spotify link
 		log.Println("Received discord message")
