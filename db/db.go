@@ -2,10 +2,15 @@ package spootiferdb
 
 import (
 	_ "embed"
+	"errors"
+	"github.com/bwmarrin/discordgo"
+	"github.com/khreezy/spootifer/discord"
+	spootiferspotify "github.com/khreezy/spootifer/spotify"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"log"
+	"time"
 )
 
 func ConnectToDB() (*gorm.DB, error) {
@@ -19,10 +24,22 @@ func ConnectToDB() (*gorm.DB, error) {
 
 	db.AutoMigrate(&User{}, &UserGuild{}, &SpotifyAuthToken{})
 
-	users := &[]*User{}
-	db.Find(users)
+	var authTokens []SpotifyAuthToken
 
-	log.Println("Users: ", users)
+	db.Find(&authTokens)
+
+	for _, token := range authTokens {
+		exp, err := time.Parse(time.DateTime, token.SpotifyExpiryTime)
+
+		if err != nil {
+			log.Println("err: ", err)
+			continue
+		}
+
+		token.SpotifyExpiryTime = exp.Format(time.RFC3339)
+
+		db.Save(&token)
+	}
 	return db, nil
 }
 
@@ -107,4 +124,58 @@ func SaveSpotifyAuthToken(db *gorm.DB, auth *SpotifyAuthToken) (*SpotifyAuthToke
 	}
 
 	return auth, nil
+}
+
+func SaveMessageLinks(db *gorm.DB, m *discordgo.MessageCreate) {
+	links := spootiferspotify.GetSpotifyLinks(m.Content)
+
+	if len(links) > 0 {
+
+		WriteAsync(func() error {
+			var err error
+
+			for _, link := range links {
+				link := &MessageLink{
+					MessageID: m.ID,
+					GuildID:   m.GuildID,
+					ChannelID: m.ChannelID,
+					Link:      link,
+				}
+
+				tx := db.Save(link)
+
+				if tx.Error != nil {
+					log.Println("Error saving MessageLink: ", err)
+					err = errors.New("error saving some message link")
+				}
+			}
+
+			if err != nil {
+				return err
+			}
+
+			return nil
+		})
+
+	}
+}
+
+func AcknowledgeMessageLink(db *gorm.DB, m *discordgo.MessageCreate, s *discordgo.Session) {
+	WriteAsync(func() error {
+		return db.Transaction(func(tx *gorm.DB) error {
+			r := tx.Model(&MessageLink{}).Where("message_id = ?", m.ID).Update("acknowledged", true)
+
+			if r.Error != nil {
+				return r.Error
+			}
+
+			err := s.MessageReactionAdd(m.ChannelID, m.ID, discord.EmojiID)
+
+			if err != nil {
+				return err
+			}
+
+			return nil
+		})
+	})
 }

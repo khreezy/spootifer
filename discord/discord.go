@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	emojiID         = "\u2705"
+	EmojiID         = "\u2705"
 	playlistLinkKey = "playlist-link"
 )
 
@@ -193,6 +193,7 @@ func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordg
 
 				if err != nil {
 					log.Println("Error getting client: ", err)
+					continue
 				}
 
 				if len(trackIds) == 0 {
@@ -215,13 +216,13 @@ func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordg
 					}
 				}
 
-				go FinishAddTrackToPlaylist(s, spotifyClient, trackIds, guild, m)
+				go FinishAddTrackToPlaylist(db, s, spotifyClient, trackIds, guild, m)
 			}
 		}
 	}
 }
 
-func FinishAddTrackToPlaylist(s *discordgo.Session, spotifyClient *spotify.Client, trackIDs []spotify.ID, guild spootiferdb.UserGuild, m *discordgo.MessageCreate) {
+func FinishAddTrackToPlaylist(db *gorm.DB, s *discordgo.Session, spotifyClient *spotify.Client, trackIDs []spotify.ID, guild spootiferdb.UserGuild, m *discordgo.MessageCreate) {
 	if len(trackIDs) > 0 {
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 
@@ -239,15 +240,7 @@ func FinishAddTrackToPlaylist(s *discordgo.Session, spotifyClient *spotify.Clien
 		} else {
 			log.Println("Track added to Spotify playlist")
 
-			AddReactionToMessage(s, m.ChannelID, m.ID, emojiID)
+			spootiferdb.AcknowledgeMessageLink(db, m, s)
 		}
-	}
-}
-
-func AddReactionToMessage(s *discordgo.Session, channelId, messageID, emojiID string) {
-	err := s.MessageReactionAdd(channelId, messageID, emojiID)
-
-	if err != nil {
-		log.Println("Error adding react emoji: ", err)
 	}
 }
