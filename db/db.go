@@ -22,7 +22,7 @@ func ConnectToDB() (*gorm.DB, error) {
 		return nil, err
 	}
 
-	db.AutoMigrate(&User{}, &UserGuild{}, &SpotifyAuthToken{})
+	db.AutoMigrate(&User{}, &UserGuild{}, &SpotifyAuthToken{}, &MessageLink{})
 
 	var authTokens []SpotifyAuthToken
 
