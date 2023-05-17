@@ -79,6 +79,12 @@ func ClientFromDBToken(token spootiferdb.SpotifyAuthToken) (*spotify.Client, err
 	expiry, err := time.Parse(time.RFC3339, token.SpotifyExpiryTime)
 
 	if err != nil {
+		expiry, err = time.Parse(time.DateTime, token.SpotifyExpiryTime)
+
+		if err != nil {
+
+		}
+
 		return nil, err
 	}
 

@@ -39,3 +39,19 @@ type UserGuild struct {
 	CreatedAt         string
 	UpdatedAt         string
 }
+
+type MessageLink struct {
+	gorm.Model
+	Link             string
+	MessageID        string
+	GuildID          string
+	ChannelID        string
+	Acknowledged     bool
+	TrackAddAttempts int
+}
+
+type SpotifyTrackAdd struct {
+	gorm.Model
+	TrackID       string
+	ContentListID string
+}
