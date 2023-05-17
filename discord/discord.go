@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	EmojiID         = "\u2705"
 	playlistLinkKey = "playlist-link"
 )
 
@@ -30,7 +29,7 @@ var (
 		{
 			Name:        "authorize-spotify",
 			Description: "Generate a link to authorize Spootifer to use your spotify data.",
-			Options:     []*discordgo.ApplicationCommandOption{
+			Options: []*discordgo.ApplicationCommandOption{
 				//{
 				//	Name:        "Spotify Playlist Link",
 				//	Description: "Playlist to link after authorizing.",
@@ -174,6 +173,8 @@ func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordg
 		log.Println("Received discord message")
 
 		if spootiferspotify.ContainsSpotifyLink(m.Content) {
+			spootiferdb.SaveMessageLinks(db, m)
+
 			var userGuilds []spootiferdb.UserGuild
 
 			tx := db.Where("discord_guild_id = ?", m.GuildID).Preload("User").Preload("User.SpotifyAuthToken").Find(&userGuilds)

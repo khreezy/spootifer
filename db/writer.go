@@ -41,7 +41,9 @@ func newWriteMessage(writeFunc func() error) writeMessage {
 func handleErr(errChan chan error) {
 	err := <-errChan
 
-	log.Println("Error processing write: ", err)
+	if err != nil {
+		log.Println("Error processing write: ", err)
+	}
 }
 
 // WriteSync

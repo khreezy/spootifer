@@ -34,12 +34,6 @@ func ContainsSpotifyLink(msg string) bool {
 	return strings.Contains(msg, SpotifyDomain)
 }
 
-func GetSpotifyLinks(msg string) []string {
-	regex := regexp.MustCompile(`(https?://open\.spotify\.com/track/[a-zA-Z0-9]+|https?://open\.spotify\.com/album/[a-zA-Z0-9]+|spotify:track:|spotify:album:[a-zA-Z0-9]+)`)
-
-	return regex.FindAllString(msg, -1)
-}
-
 func ExtractIDs(link string) []string {
 	// Define a regular expression pattern to match Spotify track IDs
 	// Spotify track IDs are 22 characters long and consist of uppercase letters, lowercase letters, and digits

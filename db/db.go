@@ -4,13 +4,15 @@ import (
 	_ "embed"
 	"errors"
 	"github.com/bwmarrin/discordgo"
-	"github.com/khreezy/spootifer/discord"
-	spootiferspotify "github.com/khreezy/spootifer/spotify"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"log"
-	"time"
+	"regexp"
+)
+
+const (
+	EmojiID = "\u2705"
 )
 
 func ConnectToDB() (*gorm.DB, error) {
@@ -24,22 +26,6 @@ func ConnectToDB() (*gorm.DB, error) {
 
 	db.AutoMigrate(&User{}, &UserGuild{}, &SpotifyAuthToken{}, &MessageLink{})
 
-	var authTokens []SpotifyAuthToken
-
-	db.Find(&authTokens)
-
-	for _, token := range authTokens {
-		exp, err := time.Parse(time.DateTime, token.SpotifyExpiryTime)
-
-		if err != nil {
-			log.Println("err: ", err)
-			continue
-		}
-
-		token.SpotifyExpiryTime = exp.Format(time.RFC3339)
-
-		db.Save(&token)
-	}
 	return db, nil
 }
 
@@ -126,8 +112,14 @@ func SaveSpotifyAuthToken(db *gorm.DB, auth *SpotifyAuthToken) (*SpotifyAuthToke
 	return auth, nil
 }
 
+func GetSpotifyLinks(msg string) []string {
+	regex := regexp.MustCompile(`(https?://open\.spotify\.com/track/[a-zA-Z0-9]+|https?://open\.spotify\.com/album/[a-zA-Z0-9]+|spotify:track:|spotify:album:[a-zA-Z0-9]+)`)
+
+	return regex.FindAllString(msg, -1)
+}
+
 func SaveMessageLinks(db *gorm.DB, m *discordgo.MessageCreate) {
-	links := spootiferspotify.GetSpotifyLinks(m.Content)
+	links := GetSpotifyLinks(m.Content)
 
 	if len(links) > 0 {
 
@@ -169,7 +161,7 @@ func AcknowledgeMessageLink(db *gorm.DB, m *discordgo.MessageCreate, s *discordg
 				return r.Error
 			}
 
-			err := s.MessageReactionAdd(m.ChannelID, m.ID, discord.EmojiID)
+			err := s.MessageReactionAdd(m.ChannelID, m.ID, EmojiID)
 
 			if err != nil {
 				return err
