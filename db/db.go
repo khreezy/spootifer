@@ -11,7 +11,9 @@ import (
 )
 
 func ConnectToDB() (*gorm.DB, error) {
-	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("%s?_journal_mode=WAL", os.Getenv("DATABASE_PATH"))), &gorm.Config{
+	dbPath := os.Getenv("DATABASE_PATH")
+	log.Println("Using database at: ", dbPath)
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("%s?_journal_mode=WAL", dbPath)), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
 

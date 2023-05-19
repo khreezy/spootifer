@@ -3,5 +3,6 @@ WORKDIR /spootifer
 COPY . ./
 EXPOSE 8080
 EXPOSE 8080
+RUN mkdir -p /etc/db
 RUN go build -buildvcs=false -ldflags "-s -w -extldflags '-static'" -tags osusergo,netgo -o /spootifer .
-ENTRYPOINT /spootifer/spootifer
+ENTRYPOINT /etc/db/spootifer.db && /spootifer/spootifer
