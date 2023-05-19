@@ -24,7 +24,6 @@ var (
 )
 
 func main() {
-
 	// Create a new Discord session
 	dg, err := discordgo.New("Bot " + os.Getenv("DISCORD_BOT_TOKEN"))
 

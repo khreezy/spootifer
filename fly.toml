@@ -12,8 +12,8 @@ kill_timeout = "5s"
   auto_rollback = true
 
 [env]
-  SENDGRID_TEMPLATE_NAME = "spootifer-auth"
   SPOTIFY_REDIRECT_URI = "https://spootifer.burningdownthe.haus/callback"
+  DATABASE_PATH = "/litefs/spootifer.db"
 
 [mounts]
   source = "litefs"
