@@ -2,21 +2,16 @@ package spootiferdb
 
 import (
 	_ "embed"
-	"errors"
-	"github.com/bwmarrin/discordgo"
+	"fmt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"log"
-	"regexp"
-)
-
-const (
-	EmojiID = "\u2705"
+	"os"
 )
 
 func ConnectToDB() (*gorm.DB, error) {
-	db, err := gorm.Open(sqlite.Open("/litefs/spootifer.db?_journal_mode=WAL"), &gorm.Config{
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("%s?_journal_mode=WAL", os.Getenv("DATABASE_PATH"))), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
 
@@ -110,64 +105,4 @@ func SaveSpotifyAuthToken(db *gorm.DB, auth *SpotifyAuthToken) (*SpotifyAuthToke
 	}
 
 	return auth, nil
-}
-
-func GetSpotifyLinks(msg string) []string {
-	regex := regexp.MustCompile(`(https?://open\.spotify\.com/track/[a-zA-Z0-9]+|https?://open\.spotify\.com/album/[a-zA-Z0-9]+|spotify:track:|spotify:album:[a-zA-Z0-9]+)`)
-
-	return regex.FindAllString(msg, -1)
-}
-
-func SaveMessageLinks(db *gorm.DB, m *discordgo.MessageCreate) {
-	links := GetSpotifyLinks(m.Content)
-
-	if len(links) > 0 {
-
-		WriteAsync(func() error {
-			var err error
-
-			for _, link := range links {
-				link := &MessageLink{
-					MessageID: m.ID,
-					GuildID:   m.GuildID,
-					ChannelID: m.ChannelID,
-					Link:      link,
-				}
-
-				tx := db.Save(link)
-
-				if tx.Error != nil {
-					log.Println("Error saving MessageLink: ", err)
-					err = errors.New("error saving some message link")
-				}
-			}
-
-			if err != nil {
-				return err
-			}
-
-			return nil
-		})
-
-	}
-}
-
-func AcknowledgeMessageLink(db *gorm.DB, m *discordgo.MessageCreate, s *discordgo.Session) {
-	WriteAsync(func() error {
-		return db.Transaction(func(tx *gorm.DB) error {
-			r := tx.Model(&MessageLink{}).Where("message_id = ?", m.ID).Update("acknowledged", true)
-
-			if r.Error != nil {
-				return r.Error
-			}
-
-			err := s.MessageReactionAdd(m.ChannelID, m.ID, EmojiID)
-
-			if err != nil {
-				return err
-			}
-
-			return nil
-		})
-	})
 }

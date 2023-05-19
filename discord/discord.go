@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	spootiferdb "github.com/khreezy/spootifer/db"
+	"github.com/khreezy/spootifer/db/messagelinkdb"
 	spootiferspotify "github.com/khreezy/spootifer/spotify"
 	"github.com/zmb3/spotify/v2"
 	"gorm.io/gorm"
@@ -29,7 +30,7 @@ var (
 		{
 			Name:        "authorize-spotify",
 			Description: "Generate a link to authorize Spootifer to use your spotify data.",
-			Options: []*discordgo.ApplicationCommandOption{
+			Options:     []*discordgo.ApplicationCommandOption{
 				//{
 				//	Name:        "Spotify Playlist Link",
 				//	Description: "Playlist to link after authorizing.",
@@ -173,7 +174,7 @@ func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordg
 		log.Println("Received discord message")
 
 		if spootiferspotify.ContainsSpotifyLink(m.Content) {
-			spootiferdb.SaveMessageLinks(db, m)
+			messagelinkdb.SaveMessageLinksFromMessage(db, m)
 
 			var userGuilds []spootiferdb.UserGuild
 
@@ -241,7 +242,7 @@ func FinishAddTrackToPlaylist(db *gorm.DB, s *discordgo.Session, spotifyClient *
 		} else {
 			log.Println("Track added to Spotify playlist")
 
-			spootiferdb.AcknowledgeMessageLink(db, m, s)
+			messagelinkdb.AcknowledgeMessageLink(db, m, s)
 		}
 	}
 }

@@ -42,16 +42,19 @@ type UserGuild struct {
 
 type MessageLink struct {
 	gorm.Model
-	Link             string
-	MessageID        string
-	GuildID          string
-	ChannelID        string
-	Acknowledged     bool
-	TrackAddAttempts int
+	Link         string
+	MessageID    string
+	GuildID      string
+	ChannelID    string
+	Acknowledged bool
+	LinkType     string
+	TrackAdds    []SpotifyTrackAdd
 }
 
 type SpotifyTrackAdd struct {
 	gorm.Model
-	TrackID       string
-	ContentListID string
+	SpotifyTrackID    string
+	SpotifyPlaylistID string
+	MessageLinkID     int
+	MessageLink       MessageLink
 }
