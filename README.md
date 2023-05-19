@@ -10,3 +10,5 @@ Currently, Spootifer only supports adding to Spotify playlists. In order to deve
 4. Create your own Spotify application
 5. Set your .env based on [the example](.env.example) using values from step 2 and 4
 6. Run `./build-spooty.sh && ./run-spooty.sh`
+
+If you need to view Spootifer's logs run `./spootifer-logs.sh`
