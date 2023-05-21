@@ -2,7 +2,7 @@ FROM golang:1.20 AS builder
 WORKDIR /spootifer
 COPY app/go.mod app/go.sum ./
 RUN go mod download
-COPY app/ ..
+COPY app/ ./
 RUN go build -buildvcs=false -ldflags "-s -w -extldflags '-static'" -tags osusergo,netgo -o /spootifer .
 EXPOSE 8080
 EXPOSE 8081
