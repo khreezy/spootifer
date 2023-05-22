@@ -7,6 +7,7 @@ import (
 	"github.com/zmb3/spotify/v2"
 	spotifyauth "github.com/zmb3/spotify/v2/auth"
 	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 	"log"
 	"os"
 	"regexp"
@@ -79,6 +80,23 @@ func ExtractPlaylistID(link string) string {
 
 func GenerateAuthURL(state string) string {
 	return auth.AuthURL(state, oauth2.AccessTypeOnline)
+}
+
+func ClientFromClientCreds(ctx context.Context) (*spotify.Client, error) {
+	config := &clientcredentials.Config{
+		ClientID:     os.Getenv("SPOTIFY_CLIENT_ID"),
+		ClientSecret: os.Getenv("SPOTIFY_CLIENT_SECRET"),
+		TokenURL:     spotifyauth.TokenURL,
+	}
+	token, err := config.Token(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	httpClient := spotifyauth.New().Client(ctx, token)
+
+	return spotify.New(httpClient), nil
 }
 
 func ClientFromDBToken(token spootiferdb.SpotifyAuthToken) (*spotify.Client, error) {

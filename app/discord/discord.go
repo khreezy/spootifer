@@ -30,7 +30,7 @@ var (
 		{
 			Name:        "authorize-spotify",
 			Description: "Generate a link to authorize Spootifer to use your spotify data.",
-			Options:     []*discordgo.ApplicationCommandOption{
+			Options: []*discordgo.ApplicationCommandOption{
 				//{
 				//	Name:        "Spotify Playlist Link",
 				//	Description: "Playlist to link after authorizing.",
@@ -190,6 +190,28 @@ func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordg
 
 			var trackIds []spotify.ID
 
+			if spootiferspotify.IsAlbum(m.Content) {
+				spotifyClient, err := spootiferspotify.ClientFromClientCreds(context.Background())
+
+				if err != nil {
+					log.Println("Error getting spotify client: ", err)
+				}
+
+				album, err := spotifyClient.GetAlbum(context.Background(), spotify.ID(ids[0]))
+
+				if err != nil {
+					log.Println("error fetching album: ", err)
+				}
+
+				for _, track := range album.Tracks.Tracks {
+					trackIds = append(trackIds, track.ID)
+				}
+			} else {
+				for _, id := range ids {
+					trackIds = append(trackIds, spotify.ID(id))
+				}
+			}
+
 			for _, guild := range userGuilds {
 				spotifyClient, err := spootiferspotify.ClientFromDBToken(guild.User.SpotifyAuthToken)
 
@@ -200,22 +222,6 @@ func NewMessageCreateHandler(db *gorm.DB) func(s *discordgo.Session, m *discordg
 
 				if len(trackIds) == 0 {
 
-					if spootiferspotify.IsAlbum(m.Content) {
-
-						album, err := spotifyClient.GetAlbum(context.Background(), spotify.ID(ids[0]))
-
-						if err != nil {
-							log.Println("error fetching album: ", err)
-						}
-
-						for _, track := range album.Tracks.Tracks {
-							trackIds = append(trackIds, track.ID)
-						}
-					} else {
-						for _, id := range ids {
-							trackIds = append(trackIds, spotify.ID(id))
-						}
-					}
 				}
 
 				go FinishAddTrackToPlaylist(db, s, spotifyClient, trackIds, guild, m)
