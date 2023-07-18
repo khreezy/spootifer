@@ -1,4 +1,4 @@
 #!/bin/bash
 
-docker logs --follow spootifer
+docker-compose logs --follow
 
