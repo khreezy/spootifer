@@ -7,12 +7,14 @@ RUN go build -buildvcs=false -ldflags "-s -w -extldflags '-static'" -tags osuser
 EXPOSE 8080
 EXPOSE 8081
 # Copy binaries from the previous build stages.
+FROM registry.fly.io/spootifer:orchestra-latest AS worker
+
 FROM alpine
 COPY --from=flyio/litefs:0.4 /usr/local/bin/litefs /usr/local/bin/litefs
 COPY --from=builder /spootifer/spootifer /spootifer/spootifer
+COPY --from=worker /app/worker/worker /spootifer/worker
 RUN apk add bash fuse3 sqlite ca-certificates curl
 
 # Copy our LiteFS configuration.
 ADD litefs.yml litefs.yml
 RUN apk add bash fuse3 sqlite ca-certificates curl
-ENTRYPOINT litefs mount
