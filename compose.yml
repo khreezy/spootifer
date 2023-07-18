@@ -1,5 +1,7 @@
 services:
   app:
+    ports:
+      - "8080:8081"
     build:
       dockerfile: Dockerfile.local
       context: .
@@ -17,8 +19,6 @@ services:
       - db:/data
     env_file:
       - .env.worker
-    networks:
-      - redis
     build:
       dockerfile: Dockerfile.local
       context: .
@@ -30,9 +30,5 @@ services:
     image: redis:latest
     volumes:
       - db:/data
-    networks:
-      - redis
 volumes:
   db:
-networks:
-  redis:
