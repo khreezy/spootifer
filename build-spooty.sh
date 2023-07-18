@@ -1,2 +1,1 @@
-docker volume create spootifer-local
-docker build . -f Dockerfile.local -t spootifer
+docker-compose build --no-cache --pull
