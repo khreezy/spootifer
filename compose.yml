@@ -1,0 +1,38 @@
+services:
+  app:
+    build:
+      dockerfile: Dockerfile.local
+      context: .
+      target: builder
+    volumes:
+      - db:/db
+    env_file:
+      - .env
+    entrypoint: "/spootifer/spootifer"
+  worker:
+    depends_on:
+      - redis
+    volumes:
+      - db:/db
+      - db:/data
+    env_file:
+      - .env.worker
+    networks:
+      - redis
+    build:
+      dockerfile: Dockerfile.local
+      context: .
+      target: runner
+    entrypoint: "/spootifer/worker"
+  redis:
+    ports:
+      - "6379:6379"
+    image: redis:latest
+    volumes:
+      - db:/data
+    networks:
+      - redis
+volumes:
+  db:
+networks:
+  redis:

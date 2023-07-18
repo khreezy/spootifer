@@ -2,3 +2,4 @@ spootifer
 .idea
 .env
 .db
+.env.worker

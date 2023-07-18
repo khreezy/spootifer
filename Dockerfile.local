@@ -1,4 +1,5 @@
-FROM golang:1.20
+FROM registry.fly.io/spootifer:orchestra-latest AS worker
+FROM golang:1.20 AS builder
 WORKDIR /spootifer
 COPY app/go.mod app/go.sum ./
 RUN go mod download
@@ -10,3 +11,10 @@ ENTRYPOINT /spootifer/spootifer
 ENV DATABASE_PATH=/db/spootifer.db
 COPY ./setup-db.sh ./
 RUN ./setup-db.sh
+
+FROM alpine:latest AS runner
+COPY --from=worker /app/worker/worker /spootifer/worker
+COPY --from=builder /spootifer/spootifer /spootifer/spootifer
+EXPOSE 6379
+EXPOSE 8080
+EXPOSE 8081
