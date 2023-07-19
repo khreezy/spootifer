@@ -20,8 +20,8 @@ kill_timeout = "5s"
   destination = "/var/lib/litefs"
 
 [processes]
-  app = "litefs mount -- /spootifer/spootifer"
-  worker = "litefs mount -- /spootifer/worker"
+  app = "litefs.app.yml"
+  worker = "litefs.worker.yml"
 
 [[services]]
   protocol = "tcp"

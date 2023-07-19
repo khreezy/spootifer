@@ -10,11 +10,13 @@ EXPOSE 8081
 FROM registry.fly.io/spootifer:orchestra-latest AS worker
 
 FROM alpine
-COPY --from=flyio/litefs:0.4 /usr/local/bin/litefs /usr/local/bin/litefs
+COPY --from=flyio/litefs:0.5 /usr/local/bin/litefs /usr/local/bin/litefs
 COPY --from=builder /spootifer/spootifer /spootifer/spootifer
 COPY --from=worker /app/worker/worker /spootifer/worker
 RUN apk add bash fuse3 sqlite ca-certificates curl
 
 # Copy our LiteFS configuration.
-ADD litefs.yml litefs.yml
+ADD litefs.app.yml litefs.app.yml
+ADD litefs.worker.yml litefs.worker.yml
 RUN apk add bash fuse3 sqlite ca-certificates curl
+ENTRYPOINT ["litefs", "mount", "-config"]

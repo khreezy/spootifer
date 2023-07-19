@@ -21,9 +21,11 @@ func ConnectToDB() (*gorm.DB, error) {
 		return nil, err
 	}
 
-	db.AutoMigrate(&User{}, &UserGuild{}, &SpotifyAuthToken{}, &MessageLink{})
-
 	return db, nil
+}
+
+func Migrate(db *gorm.DB) error {
+	return db.AutoMigrate(&User{}, &UserGuild{}, &SpotifyAuthToken{}, &MessageLink{})
 }
 
 func FirstOrCreateUserWithDiscordID(db *gorm.DB, discordUserID string) (*User, error) {
