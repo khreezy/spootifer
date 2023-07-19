@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/ed25519"
+	"flag"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	spootiferdb "github.com/khreezy/spootifer/db"
@@ -23,60 +24,72 @@ var (
 	auth        = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopePlaylistModifyPublic), spotifyauth.WithClientID(os.Getenv("SPOTIFY_CLIENT_ID")), spotifyauth.WithClientSecret(os.Getenv("SPOTIFY_CLIENT_SECRET")))
 )
 
+var (
+	migrate bool
+)
+
+func init() {
+	flag.BoolVar(&migrate, "migrate", false, "use --migrate to run migrations before application")
+	flag.Parse()
+}
+
 func main() {
+
 	// Create a new Discord session
-	dg, err := discordgo.New("Bot " + os.Getenv("DISCORD_BOT_TOKEN"))
+	if migrate {
+		db, err := spootiferdb.ConnectToDB()
 
-	if err != nil {
-		log.Fatal("Failed to create Discord session:", err)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+
+		err = spootiferdb.Migrate(db)
+
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	} else {
+		dg, err := discordgo.New("Bot " + os.Getenv("DISCORD_BOT_TOKEN"))
+
+		if err != nil {
+			log.Fatal("Failed to create Discord session:", err)
+		}
+
+		log.Println("Successfully authenticated with discord")
+
+		dg.Identify.Intents = discordgo.IntentsAll
+		//dg.Identify.Shard = []
+
+		dbConn, err := spootiferdb.ConnectToDB()
+
+		if err != nil {
+			log.Fatal("Failed to connect to db")
+		}
+
+		spootiferdb.StartWriteThread()
+
+		startAuthServer(dbConn)
+
+		messageCreate := discord.NewMessageCreateHandler(dbConn)
+		interactionHandler := discord.NewInteractionsHandler(dbConn)
+		// Register a messageCreate event handler
+		dg.AddHandler(messageCreate)
+		dg.AddHandler(interactionHandler)
+
+		err = dg.Open()
+
+		if err != nil {
+			log.Fatal("Failed to open Discord connection:", err)
+		}
+
+		discord.UpdateApplicationCommands(dg)
+
+		// Open a connection to Discord
+
+		// Wait for the application to be terminated
+		log.Println("Bot is now running. Press CTRL-C to exit.")
+		<-make(chan struct{})
 	}
-
-	log.Println("Successfully authenticated with discord")
-
-	dg.Identify.Intents = discordgo.IntentsAll
-	//dg.Identify.Shard = []
-
-	dbConn, err := spootiferdb.ConnectToDB()
-
-	if err != nil {
-		log.Fatal("Failed to connect to db")
-	}
-
-	spootiferdb.StartWriteThread()
-
-	//allocId, err := uuid.Parse(os.Getenv("FLY_ALLOC_ID"))
-	//
-	//var id int
-	//
-	//if err == nil {
-	//	id = int(allocId.ID())
-	//} else {
-	//	id = rand.Int()
-	//}
-
-	//dg.Identify.Shard = &([2]int{id, 2})
-
-	startAuthServer(dbConn)
-
-	messageCreate := discord.NewMessageCreateHandler(dbConn)
-	interactionHandler := discord.NewInteractionsHandler(dbConn)
-	// Register a messageCreate event handler
-	dg.AddHandler(messageCreate)
-	dg.AddHandler(interactionHandler)
-
-	err = dg.Open()
-
-	if err != nil {
-		log.Fatal("Failed to open Discord connection:", err)
-	}
-
-	discord.UpdateApplicationCommands(dg)
-
-	// Open a connection to Discord
-
-	// Wait for the application to be terminated
-	log.Println("Bot is now running. Press CTRL-C to exit.")
-	<-make(chan struct{})
 }
 
 func startAuthServer(db *gorm.DB) {
