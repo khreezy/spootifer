@@ -30,7 +30,7 @@ var (
 		{
 			Name:        "authorize-spotify",
 			Description: "Generate a link to authorize Spootifer to use your spotify data.",
-			Options: []*discordgo.ApplicationCommandOption{
+			Options:     []*discordgo.ApplicationCommandOption{
 				//{
 				//	Name:        "Spotify Playlist Link",
 				//	Description: "Playlist to link after authorizing.",
