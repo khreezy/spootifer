@@ -9,6 +9,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 	"log"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
@@ -16,9 +17,11 @@ import (
 )
 
 const (
-	SpotifyDomain   = "open.spotify.com"
-	SpotifyAlbumURI = "spotify:album:"
-	State           = "abc123"
+	SpotifyDomain          = "open.spotify.com"
+	SpotifyShortenedDomain = "spotify.link"
+	SpotifyAlbumURI        = "spotify:album:"
+	State                  = "abc123"
+	MaxRedirectDepth       = 5
 )
 
 var (
@@ -32,13 +35,13 @@ func IsAlbum(link string) bool {
 }
 
 func ContainsSpotifyLink(msg string) bool {
-	return strings.Contains(msg, SpotifyDomain)
+	return strings.Contains(msg, SpotifyDomain) || strings.Contains(msg, SpotifyShortenedDomain)
 }
 
 func ExtractIDs(link string) []string {
 	// Define a regular expression pattern to match Spotify track IDs
 	// Spotify track IDs are 22 characters long and consist of uppercase letters, lowercase letters, and digits
-	regex := regexp.MustCompile(`(?:https?://open\.spotify\.com/track/|https?://open\.spotify\.com/album/|spotify:track:|spotify:album:)([a-zA-Z0-9]+)`)
+	regex := regexp.MustCompile(`(((?:https?://open\.spotify\.com/track/|https?://open\.spotify\.com/album/|spotify:track:|spotify:album:)([a-zA-Z0-9]+))|https?://spotify.link/[a-zA-Z0-9]+)`)
 
 	// Find the first match in the input link
 	matches := regex.FindAllStringSubmatch(link, -1)
@@ -47,7 +50,18 @@ func ExtractIDs(link string) []string {
 
 	for _, match := range matches {
 		if len(match) > 1 {
-			ids = append(ids, match[1])
+			if strings.Contains(match[1], "spotify.link") {
+				fullURI, err := ExpandSpotifyShortLink(match[1], 0)
+
+				if err != nil {
+					log.Println(err.Error())
+					continue
+				}
+
+				ids = append(ids, ExtractIDs(fullURI)...)
+			} else {
+				ids = append(ids, match[3])
+			}
 		}
 	}
 
@@ -120,4 +134,41 @@ func ClientFromDBToken(token spootiferdb.SpotifyAuthToken) (*spotify.Client, err
 	}
 
 	return spotify.New(auth.Client(context.Background(), &tok)), nil
+}
+
+func ExpandSpotifyShortLink(link string, depth int) (string, error) {
+	if depth >= MaxRedirectDepth {
+		return link, nil
+	}
+
+	expandedUrl := link
+
+	req, err := http.NewRequest(http.MethodHead, link, nil)
+
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Add("User-Agent", "python-requests/2.31.0")
+	req.Header.Add("Accept-Encoding", "gzip, deflate")
+	req.Header.Add("Accept", "*/*")
+	req.Header.Add("Connection", "keep-alive")
+
+	client := &http.Client{}
+
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return expandedUrl, err
+	}
+
+	expandedUrl = resp.Request.URL.String()
+
+	defer resp.Body.Close()
+
+	if !strings.Contains(expandedUrl, SpotifyDomain) {
+		return ExpandSpotifyShortLink(expandedUrl, depth+1)
+	}
+
+	return expandedUrl, nil
 }
