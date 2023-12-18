@@ -3,3 +3,6 @@ spootifer
 .env
 .db
 .env.worker
+*.db*
+*.pem
+*.ipynb
