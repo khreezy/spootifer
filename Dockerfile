@@ -17,6 +17,5 @@ RUN apk add bash fuse3 sqlite ca-certificates curl
 
 # Copy our LiteFS configuration.
 ADD litefs.app.yml litefs.app.yml
-ADD litefs.worker.yml litefs.worker.yml
 RUN apk add bash fuse3 sqlite ca-certificates curl
 ENTRYPOINT ["litefs", "mount", "-config"]

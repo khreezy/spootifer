@@ -21,7 +21,6 @@ kill_timeout = "5s"
 
 [processes]
   app = "litefs.app.yml"
-  worker = "litefs.worker.yml"
 
 [[services]]
   protocol = "tcp"

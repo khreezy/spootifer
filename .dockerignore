@@ -12,3 +12,4 @@
 .idea/dataSources
 .idea/dataSources.local.xml
 .env
+*.db*
