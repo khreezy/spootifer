@@ -1,0 +1,29 @@
+[package]
+name = "spootifer"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "spootifer-rust"
+path = "src/spootifer-bot/main.rs"
+
+[dependencies]
+serenity = {  version = "0.12.2", features = ["model"] }
+rspotify = "0.13.3"
+clap = { version = "4.5.20", features = ["derive"] }
+refinery = { version = "0.8.14", features = ["rusqlite-bundled"]}
+regex = "1.11.1"
+reqwest = {  version = "0.12.9", features = ["blocking"] }
+rusqlite = { version = "0.31.0", features = ["bundled"] }
+log = "0.4.22"
+axum = {  version = "0.7.7" }
+http = "1.1.0"
+tokio = {  version = "1.41.0", features = ["rt-multi-thread"] }
+serde = "1.0.214"
+chrono = "0.4.38"
+async-std = "1.13.0"
+env_logger = { version = "0.11.5" }
+poise = { version = "0.6.1" }
+uuid = { version = "1.11.0", features = ["v4"] }
+time = "0.3.36"
+#axum-macros = { version = "0.4.2" }

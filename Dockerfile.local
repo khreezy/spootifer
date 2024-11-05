@@ -1,20 +1,31 @@
-FROM registry.fly.io/spootifer:orchestra-latest AS worker
-FROM golang:1.20 AS builder
-WORKDIR /spootifer
-COPY app/go.mod app/go.sum ./
-RUN go mod download
-COPY app/ ./
-RUN go build -buildvcs=false -ldflags "-s -w -extldflags '-static'" -tags osusergo,netgo -o /spootifer .
-EXPOSE 8080
-EXPOSE 8081
-ENTRYPOINT /spootifer/spootifer
-ENV DATABASE_PATH=/db/spootifer.db
-COPY ./setup-db.sh ./
-RUN ./setup-db.sh
+FROM lukemathwalker/cargo-chef:latest-rust-1-bookworm AS chef
 
-FROM alpine:latest AS runner
-COPY --from=worker /app/worker/worker /spootifer/worker
-COPY --from=builder /spootifer/spootifer /spootifer/spootifer
-EXPOSE 6379
+FROM chef AS planner
+WORKDIR /spootifer
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS  builder
+WORKDIR /spootifer
+COPY --from=planner /spootifer/recipe.json recipe.json
+RUN apt update
+RUN apt -y upgrade
+RUN apt install openssl libssl-dev
+RUN cargo chef cook --release --recipe-path recipe.json
+RUN apt-get install libssl-dev
+COPY Cargo.toml Cargo.lock ./
+COPY src/ ./src
+COPY ./setup-db.sh ./
+RUN cargo build --release
+
+FROM debian:bookworm-slim AS runner
+ENV DATABASE_PATH=/db/spootifer.db
+ENV RUST_LOG=info
+RUN apt update
+RUN apt -y upgrade
+RUN apt install -y openssl libssl-dev ca-certificates
+COPY --from=builder /spootifer/target/release/spootifer-rust ./spootifer/spootifer/spootifer-rust
+COPY --from=builder /spootifer/setup-db.sh ./
+RUN ./setup-db.sh
 EXPOSE 8080
 EXPOSE 8081
