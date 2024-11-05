@@ -13,3 +13,11 @@
 .idea/dataSources.local.xml
 .env
 *.db*
+
+target/
+venv/
+*.py
+*.ipynb
+*.example
+.ipynb_checkpoints
+.github

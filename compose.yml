@@ -1,7 +1,5 @@
 services:
-  app:
-    ports:
-      - "8080:8081"
+  migrate:
     build:
       dockerfile: Dockerfile.local
       context: .
@@ -10,25 +8,20 @@ services:
       - db:/db
     env_file:
       - .env
-    entrypoint: "/spootifer/spootifer"
-  worker:
+    entrypoint: "/spootifer/target/release/spootifer-rust --migrate"
+  app:
     depends_on:
-      - redis
-    volumes:
-      - db:/db
-      - db:/data
-    env_file:
-      - .env.worker
+      - "migrate"
+    ports:
+      - "8080:8081"
     build:
       dockerfile: Dockerfile.local
       context: .
       target: runner
-    entrypoint: "/spootifer/worker"
-  redis:
-    ports:
-      - "6379:6379"
-    image: redis:latest
     volumes:
-      - db:/data
+      - db:/db
+    env_file:
+      - .env
+    entrypoint: "/spootifer/spootifer/spootifer-rust"
 volumes:
   db:

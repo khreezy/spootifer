@@ -6,3 +6,9 @@ spootifer
 *.db*
 *.pem
 *.ipynb
+.venv
+
+
+# Added by cargo
+
+/target
