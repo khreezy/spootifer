@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime};
 use rspotify::clients::BaseClient;
 use rspotify::model::{AlbumId, PlaylistId, TrackId};
 use serenity::all::Message;
@@ -66,25 +66,25 @@ impl EventHandler for Handler {
 
         self.spotify_client.request_token().await.expect("unable to fetch spotify token");
 
+        let track_ids: Vec<Option<String>>;
+
+        if is_album(new_message.content.as_str()) {
+            info!("fetching album tracks from album: {:?}", spotify_ids);
+            track_ids = get_album_track_ids(&self.spotify_client, spotify_ids.get(0)).await
+        } else {
+            track_ids = spotify_ids.into_iter().map(|id| -> Option<String> {
+                Some(id)
+            }).collect()
+        }
+
+        info!("got track ids: {:?}", track_ids);
+
+        let filtered_track_ids: Vec<PlayableId> = track_ids.into_iter().filter_map(|x| match x {
+            Some(s) => match TrackId::from_id(s) { Ok(t) => Some(PlayableId::from(t)), Err(_) => None },
+            None => None
+        }).collect();
+
         for guild in user_guilds {
-            let track_ids: Vec<Option<String>>;
-
-            if is_album(new_message.content.as_str()) {
-                info!("fetching album tracks from album: {:?}", spotify_ids);
-                track_ids = get_album_track_ids(&self.spotify_client, spotify_ids.get(0)).await
-            } else {
-                track_ids = spotify_ids.iter().map(|id| -> Option<String> {
-                    Some(id.clone())
-                }).collect()
-            }
-            
-            info!("got track ids: {:?}", track_ids);
-
-            let filtered_track_ids: Vec<PlayableId> = track_ids.into_iter().filter_map(|x| match x {
-                Some(s) => match TrackId::from_id(s) { Ok(t) => Some(PlayableId::from(t)), Err(_) => None },
-                None => None
-            }).collect();
-
             let user = match get_user_by_user_id(&self.conn, guild.user_id) {
                 Ok(u) => u,
                 Err(e) => {
@@ -147,8 +147,7 @@ impl EventHandler for Handler {
                 }
             };
 
-            info!("adding track ids: {:?}", filtered_track_ids.clone());
-            match spotify_client.playlist_add_items(playlist_id, filtered_track_ids, None).await {
+            match spotify_client.playlist_add_items(playlist_id, filtered_track_ids.clone(), None).await {
                 Ok(_) => {
                     info!("Added tracks to playlist");
                 },
@@ -168,14 +167,15 @@ impl EventHandler for Handler {
 
 #[poise::command(slash_command)]
 pub(crate) async fn authorize_spotify<'a>(ctx: CommandCtx<'_>) -> Result<()>  {
-    let discord_user_id = ctx.author().id.to_string();
+    let discord_user_str = ctx.author().id.to_string();
+    let discord_user_id = discord_user_str.as_str();
 
     let guild_id = match ctx.guild_id() {
         Some(id) => id.to_string(),
         None => return Err(DiscordError.into())
     };
 
-    let user = match first_or_create_user_by_discord_user_id(&ctx.data().conn, discord_user_id.clone()) {
+    let user = match first_or_create_user_by_discord_user_id(&ctx.data().conn, discord_user_id) {
         Ok(u) => u,
         Err(e) => {
             error!("error creating user: {}", e);
@@ -251,7 +251,8 @@ pub(crate) async fn register_playlist<'a>(ctx: CommandCtx<'_>, playlist_link: St
         }
     }.to_string();
 
-    let discord_user_id = ctx.author().id.to_string();
+    let discord_id = ctx.author().id.to_string();
+    let discord_user_id = discord_id.as_str();
 
     let user = match get_user_by_discord_user_id(&ctx.data().conn, discord_user_id) {
         Ok(u) => u,

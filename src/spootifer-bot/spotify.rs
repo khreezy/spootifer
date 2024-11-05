@@ -7,7 +7,6 @@ use regex::Regex;
 
 const SPOTIFY_DOMAIN: &str  = "open.spotify.com";
 const SPOTIFY_SHORTENED_DOMAIN: &str = "spotify.link";
-const SPOTIFY_ALBUM_URI: &str = "spotify:album:";
 const MAX_REDIRECT_DEPTH: u32 = 5;
 
 const SPOTIFY_ALBUM_LINK: &str = "https://open.spotify.com/album/";
@@ -24,16 +23,16 @@ pub(crate) fn contains_spotify_link(msg: &str) -> bool {
 
 
 
-pub(crate) fn extract_ids<'a>(link: &'a String) -> Vec<String> {
+pub(crate) fn extract_ids(link: &str) -> Vec<String> {
     let re = Regex::new(r"(((?:https?://open\.spotify\.com/track/|https?://open\.spotify\.com/album/|spotify:track:|spotify:album:)([a-zA-Z0-9]+))|https?://spotify.link/[a-zA-Z0-9]+)").unwrap();
 
-    let matches = re.captures_iter(link.as_str());
+    let matches = re.captures_iter(link);
 
     return matches.filter_map(|m| -> Option<Vec<String>> {
         if m.len() > 1 {
-            let link = m.get(1).unwrap().as_str().to_string();
+            let link = m.get(1).unwrap().as_str();
 
-            if link.contains(SPOTIFY_SHORTENED_DOMAIN) {
+            return if link.contains(SPOTIFY_SHORTENED_DOMAIN) {
                 let full_url: String = match expand_spotify_short_link(link, 0) {
                     Ok(url) => url,
                     Err(_) => {
@@ -43,9 +42,9 @@ pub(crate) fn extract_ids<'a>(link: &'a String) -> Vec<String> {
 
                 let ids = extract_ids(&full_url);
 
-                return Some(ids)
+                Some(ids)
             } else {
-                return Some(vec![m.get(3).unwrap().as_str().to_string()])
+                Some(vec![m.get(3).unwrap().as_str().to_string()])
             }
         } else {
             None
@@ -64,10 +63,9 @@ impl Display for SpotifyErr {
 
 impl Error for SpotifyErr {}
 
-fn expand_spotify_short_link<'a>(link: String, depth: u32) -> Result<String> {
+fn expand_spotify_short_link<'a>(link: &str, depth: u32) -> Result<String> {
     if depth >= MAX_REDIRECT_DEPTH {
-        let link_string = link.to_string();
-        return Ok(link_string);
+        return Ok(link.to_string());
     }
 
     let result = reqwest::blocking::Client::new().get(link)
@@ -77,15 +75,13 @@ fn expand_spotify_short_link<'a>(link: String, depth: u32) -> Result<String> {
         .header("Connection", "keep-alive")
         .send()?;
 
-    let expanded_url = result.url();
+    let expanded_url = result.url().as_str();
 
-    if expanded_url.as_str().contains(SPOTIFY_DOMAIN) {
-        return expand_spotify_short_link(expanded_url.to_string(), depth);
+    if expanded_url.contains(SPOTIFY_DOMAIN) {
+        return expand_spotify_short_link(expanded_url, depth);
     }
 
-    let expanded_url_string = expanded_url.to_string();
-    
-    Ok(expanded_url_string)
+    Ok(expanded_url.to_string())
 }
 
 pub(crate) fn init_spotify_from_token(token: Token) -> Result<AuthCodeSpotify> {

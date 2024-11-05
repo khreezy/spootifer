@@ -131,10 +131,10 @@ pub(crate) fn update_user_guild_spotify_playlist_id(conn: &Arc<Mutex<Connection>
     Err(DbError.into())
 }
 
-pub(crate) fn first_or_create_user_by_discord_user_id(conn: &Arc<Mutex<Connection>>, discord_user_id: String) -> Result<User> {
-    _ = match get_user_by_discord_user_id(conn, discord_user_id.clone()) {
+pub(crate) fn first_or_create_user_by_discord_user_id(conn: &Arc<Mutex<Connection>>, discord_user_id: &str) -> Result<User> {
+    _ = match get_user_by_discord_user_id(conn, discord_user_id) {
         Ok(u) => return Ok(u),
-        Err(e) => ()
+        Err(_) => ()
     };
 
     let c = match conn.try_lock() {
@@ -144,13 +144,13 @@ pub(crate) fn first_or_create_user_by_discord_user_id(conn: &Arc<Mutex<Connectio
 
     let mut q = c.prepare("INSERT INTO users(discord_user_id, created_at, updated_at) VALUES(?, ?, ?)")?;
 
-    let now = Utc::now().to_string();
-    let r = q.insert((discord_user_id.clone(), now.clone(), now.clone()))?;
+    let now = &Utc::now().to_string();
+    let r = q.insert((discord_user_id, now, now))?;
 
 
     Ok(User {
         id: Some(r),
-        discord_user_id,
+        discord_user_id: discord_user_id.to_string(),
         created_at: now.clone(),
         updated_at: now.clone(),
         deleted_at: None,
@@ -171,7 +171,7 @@ pub(crate) fn first_or_create_user_guild_by_user_id_and_guild_id(conn: &Arc<Mute
     let mut q = c.prepare("INSERT INTO user_guilds(user_id, discord_guild_id, created_at, updated_at) VALUES(?, ?, ?, ?)")?;
 
     let now = Utc::now().to_string();
-    let r = q.insert((user_id, guild_id.clone(), now.clone(), now.clone()))?;
+    let _ = q.insert((user_id, guild_id.clone(), now.clone(), now.clone()))?;
 
     Ok(UserGuild {
         user_id,
@@ -181,31 +181,6 @@ pub(crate) fn first_or_create_user_guild_by_user_id_and_guild_id(conn: &Arc<Mute
         deleted_at: None,
         spotify_playlist_id: None
     })
-}
-
-pub(crate) fn get_user_guild_by_guild_id(conn: &Arc<Mutex<Connection>>, guild_id: &str) -> Result<UserGuild> {
-    let c = match conn.try_lock() {
-        Ok(c) => c,
-        Err(_) => return Err(DbError.into()),
-    };
-
-    let q = c.prepare("SELECT user_id, discord_guild_id, spotify_playlist_id, deleted_at, created_at, updated_at FROM user_guilds WHERE discord_guild_id = ?");
-
-    let r = q?.query_row([guild_id], |row: &Row| -> rusqlite::Result<UserGuild> {
-        Ok(UserGuild {
-            user_id: row.get(0)?,
-            discord_guild_id: row.get(1)?,
-            spotify_playlist_id: row.get(2)?,
-            deleted_at: row.get(3)?,
-            created_at: row.get(4)?,
-            updated_at: row.get(5)?,
-        })
-    });
-    
-    match r {
-        Ok(r) => Ok(r),
-        Err(e) => Err(e.into()),
-    }
 }
 
 pub(crate) fn get_user_guild_by_user_id_and_guild_id(conn: &Arc<Mutex<Connection>>, guild_id: String, user_id: i64) -> Result<UserGuild> {
@@ -257,7 +232,7 @@ pub(crate) fn get_user_by_user_id(conn: &Arc<Mutex<Connection>>, user_id: i64) -
     }
 }
 
-pub(crate) fn get_user_by_discord_user_id(conn: &Arc<Mutex<Connection>>, discord_user_id: String) -> Result<User> {
+pub(crate) fn get_user_by_discord_user_id(conn: &Arc<Mutex<Connection>>, discord_user_id: &str) -> Result<User> {
     let c = match conn.try_lock() {
         Ok(c) => c,
         Err(_) => return Err(DbError.into()),
@@ -281,7 +256,7 @@ pub(crate) fn get_user_by_discord_user_id(conn: &Arc<Mutex<Connection>>, discord
     }
 }
 
-pub(crate) fn create_auth_request(conn: &Arc<Mutex<Connection>>, state: String, discord_user_id: String) -> Result<AuthRequest> {
+pub(crate) fn create_auth_request(conn: &Arc<Mutex<Connection>>, state: String, discord_user_id: &str) -> Result<AuthRequest> {
     let c = match conn.try_lock() {
         Ok(c) => c,
         Err(_) => return Err(DbError.into()),
@@ -289,10 +264,10 @@ pub(crate) fn create_auth_request(conn: &Arc<Mutex<Connection>>, state: String, 
 
     let mut q = c.prepare("INSERT INTO auth_requests(state, discord_user_id) VALUES(?,?)")?;
 
-    _ = q.insert((state.clone(), discord_user_id.clone()))?;
+    _ = q.insert((state.clone(), discord_user_id))?;
 
     Ok(AuthRequest {
-        discord_user_id,
+        discord_user_id: discord_user_id.to_string(),
         state
     })
 }
@@ -334,17 +309,6 @@ pub(crate) fn get_spotify_auth_token_by_user_id(conn: &Arc<Mutex<Connection>>, u
 
     match r {
         Ok(t) => Ok(t),
-        Err(e) => Err(e.into()),
-    }
-}
-
-pub(crate) fn create_user_in_transaction(conn: &Transaction, user: User) -> Result<i64> {
-    let q = conn.prepare("INSERT INTO users (created_at, updated_at, discord_user_id) VALUES (?, ?, ?)");
-
-    let r = q?.insert((user.created_at, user.updated_at, user.discord_user_id));
-
-    match r {
-        Ok(i) => Ok(i),
         Err(e) => Err(e.into()),
     }
 }
