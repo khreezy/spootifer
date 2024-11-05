@@ -16,13 +16,12 @@ use crate::discord::Handler;
 use http::StatusCode;
 use rspotify::{ClientCredsSpotify, Credentials};
 use rspotify::clients::{BaseClient, OAuthClient};
-use crate::db::{create_spotify_auth_token, create_user_in_transaction, get_auth_request_by_state, get_user_by_discord_user_id, SpotifyAuthToken, User};
+use crate::db::{create_spotify_auth_token, get_auth_request_by_state, get_user_by_discord_user_id, SpotifyAuthToken};
 use serde::Deserialize;
 use crate::spotify::init_spotify;
 use std::sync::{Arc, Mutex};
 use async_std::{task};
 use axum::extract::Query;
-use axum::response::{IntoResponse, Response};
 use rusqlite::Connection;
 
 
@@ -158,7 +157,7 @@ async fn complete_auth(State(state): State<Arc<ServerState>>, code: Query<Code>,
 
     let token = maybe_token.clone().expect("error getting token");
 
-    let user = match get_user_by_discord_user_id(&state.conn, auth_request.discord_user_id) {
+    let user = match get_user_by_discord_user_id(&state.conn, auth_request.discord_user_id.as_str()) {
         Ok(u) => u,
         Err(e) => {
             error!("failed to get user: {}", e);
