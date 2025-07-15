@@ -27,3 +27,6 @@ poise = { version = "0.6.1" }
 uuid = { version = "1.11.0", features = ["v4"] }
 time = "0.3.36"
 #axum-macros = { version = "0.4.2" }
+
+[dev-dependencies]
+tokio-test = "0.4"

@@ -2,13 +2,13 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use chrono::{DateTime};
 use rspotify::clients::BaseClient;
-use rspotify::model::{AlbumId, PlaylistId, TrackId};
+use rspotify::model::{AlbumId, PlaylistId, TrackId, Image};
 use serenity::all::Message;
 use serenity::async_trait;
 use serenity::prelude::*;
 use rspotify::prelude::*;
 use crate::db::{create_auth_request, first_or_create_user_by_discord_user_id, first_or_create_user_guild_by_user_id_and_guild_id, get_spotify_auth_token_by_user_id, get_user_by_discord_user_id, get_user_by_user_id, get_user_guilds_by_guild_id, update_user_guild_spotify_playlist_id};
-use crate::spotify::{contains_spotify_link, extract_ids, init_spotify, init_spotify_from_token, is_album};
+use crate::spotify::{contains_spotify_link, extract_ids, init_spotify, init_spotify_from_token, is_album, get_album_cover_image_from_track_creds, get_album_cover_image_creds};
 use log::{info, error};
 use rspotify::{scopes, ClientCredsSpotify, Token};
 use serenity::all::ReactionType::Unicode;
@@ -67,14 +67,18 @@ impl EventHandler for Handler {
         self.spotify_client.request_token().await.expect("unable to fetch spotify token");
 
         let track_ids: Vec<Option<String>>;
+        let album_image: Result<Option<Image>>;
 
         if is_album(new_message.content.as_str()) {
             info!("fetching album tracks from album: {:?}", spotify_ids);
-            track_ids = get_album_track_ids(&self.spotify_client, spotify_ids.get(0)).await
+            track_ids = get_album_track_ids(&self.spotify_client, spotify_ids.get(0)).await;
+            album_image = get_album_cover_image_creds(&self.spotify_client, spotify_ids.get(0).unwrap()).await;
         } else {
+            let first_id = spotify_ids.get(0).unwrap().clone();
             track_ids = spotify_ids.into_iter().map(|id| -> Option<String> {
                 Some(id)
-            }).collect()
+            }).collect();
+            album_image = get_album_cover_image_from_track_creds(&self.spotify_client, &first_id).await;
         }
 
         info!("got track ids: {:?}", track_ids);
@@ -161,7 +165,13 @@ impl EventHandler for Handler {
         let mills500 = std::time::Duration::from_millis(500);
         task::sleep(mills500).await;
         info!("acknowledging message");
-        _ = new_message.react(ctx, Unicode(String::from("✅"))).await;
+        _ = new_message.react(&ctx, Unicode(String::from("✅"))).await;
+
+        if let Ok(Some(image)) = album_image {
+            if !image.url.is_empty() {
+                let _ = new_message.reply(&ctx.http, image.url).await;
+            }
+        }
     }
 }
 
