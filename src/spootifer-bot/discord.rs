@@ -166,10 +166,10 @@ impl EventHandler for Handler {
         task::sleep(mills500).await;
         info!("acknowledging message");
         _ = new_message.react(&ctx, Unicode(String::from("✅"))).await;
-
         if let Ok(Some(image)) = album_image {
             if !image.url.is_empty() {
                 let _ = new_message.reply(&ctx.http, image.url).await;
+                info!("sent album art to channel");
             }
         }
     }
