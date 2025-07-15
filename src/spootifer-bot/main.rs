@@ -1,6 +1,7 @@
 mod db;
 mod discord;
 mod spotify;
+mod tests;
 
 use clap::Parser;
 use std::{env};
