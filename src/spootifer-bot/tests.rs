@@ -2,7 +2,9 @@
 mod tests {
     use crate::spotify::*;
     use std::env;
-    
+    use rspotify::Credentials;
+    use rspotify::ClientCredsSpotify;
+
     #[tokio::test]
     async fn test_album_cover_image_retrieval_from_track() {
         // Skip test if no Spotify credentials are set
@@ -16,10 +18,11 @@ mod tests {
         
         // Extract track ID from the link
         let track_id = extract_track_id(test_link).expect("Failed to extract track ID");
-        
-        // Initialize Spotify client (requires credentials)
-        let spotify = init_spotify().expect("Failed to initialize Spotify client");
-        
+
+        let creds = Credentials::from_env().unwrap();
+        let spotify = ClientCredsSpotify::new(creds);
+        spotify.request_token().await.unwrap();
+
         // Get album cover image from track
         let cover_image = get_album_cover_image_from_track(&spotify, &track_id).await
             .expect("Failed to retrieve album cover image from track");
@@ -73,10 +76,12 @@ mod tests {
         let album_id = extract_album_id(test_link).expect("Failed to extract album ID");
         
         // Initialize Spotify client (requires credentials)
-        let spotify = init_spotify().expect("Failed to initialize Spotify client");
+        let creds = Credentials::from_env().unwrap();
+        let spotify = ClientCredsSpotify::new(creds);
+        spotify.request_token().await.unwrap();
         
         // Get album cover image
-        let cover_image = get_album_cover_image(&spotify, &album_id).await
+        let cover_image = get_album_cover_image(&spotify, Some(&album_id)).await
             .expect("Failed to retrieve album cover image");
         
         // Verify we got an image

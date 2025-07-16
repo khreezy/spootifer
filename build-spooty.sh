@@ -1,1 +1,1 @@
-docker-compose build --no-cache --pull
+docker compose build --no-cache --pull
