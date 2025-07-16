@@ -1,9 +1,11 @@
 use std::env;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use log::error;
+use std::sync::Arc;
+use log::{error};
+use ordermap::OrderSet;
 use rspotify::{scopes, AuthCodeSpotify, ClientCredsSpotify, Config, Credentials, OAuth, Token};
-use rspotify::model::{AlbumId, TrackId, FullAlbum, FullTrack, Image};
+use rspotify::model::{AlbumId, FullAlbum, FullTrack, Image, PlayableId, TrackId};
 use rspotify::clients::BaseClient;
 use regex::Regex;
 
@@ -24,15 +26,20 @@ pub(crate) fn contains_spotify_link(msg: &str) -> bool {
 }
 
 
+#[derive(Debug, Clone)]
+pub(crate) enum IdType {
+    Track(String),
+    Album(String),
+}
 
-pub(crate) fn extract_ids(link: &str) -> Vec<String> {
+pub(crate) fn extract_ids(link: &str) -> Vec<IdType> {
     let re = Regex::new(r"(((?:https?://open\.spotify\.com/track/|https?://open\.spotify\.com/album/|spotify:track:|spotify:album:)([a-zA-Z0-9]+))|https?://spotify.link/[a-zA-Z0-9]+)").unwrap();
 
     let matches = re.captures_iter(link);
 
-    return matches.filter_map(|m| -> Option<Vec<String>> {
+    return matches.filter_map(|m| -> Option<Vec<IdType>> {
         if m.len() > 1 {
-            let link = m.get(1).unwrap().as_str();
+            let link = m.get(1)?.as_str();
 
             return if link.contains(SPOTIFY_SHORTENED_DOMAIN) {
                 let full_url: String = match expand_spotify_short_link(link, 0) {
@@ -42,11 +49,11 @@ pub(crate) fn extract_ids(link: &str) -> Vec<String> {
                     }
                 };
 
-                let ids = extract_ids(&full_url);
-
-                Some(ids)
+                Some(extract_ids(&full_url))
+            } else if is_album(link) {
+                Some(vec![IdType::Album(m.get(3)?.as_str().to_string())])
             } else {
-                Some(vec![m.get(3).unwrap().as_str().to_string()])
+                Some(vec![IdType::Track(m.get(3)?.as_str().to_string())])
             }
         } else {
             None
@@ -144,13 +151,7 @@ pub(crate) fn extract_playlist_id(link: String) -> Option<String> {
     Some(re.captures(link.as_str())?.get(1)?.as_str().to_string())
 }
 
-pub(crate) fn extract_track_id(link: &str) -> Option<String> {
-    let re = Regex::new(r"https://open\.spotify\.com/track/([a-zA-Z0-9]+)").expect("unable to compile regex");
-
-    Some(re.captures(link)?.get(1)?.as_str().to_string())
-}
-
-pub(crate) async fn get_album_cover_image_from_track(spotify: &AuthCodeSpotify, track_id: &str) -> Result<Option<Image>> {
+pub(crate) async fn get_album_cover_image_from_track(spotify: &ClientCredsSpotify, track_id: &str) -> Result<Option<Image>> {
     let track_id = TrackId::from_id(track_id)?;
     
     let track: FullTrack = spotify.track(track_id, None).await?;
@@ -158,32 +159,78 @@ pub(crate) async fn get_album_cover_image_from_track(spotify: &AuthCodeSpotify, 
     Ok(track.album.images.into_iter().next())
 }
 
-pub(crate) async fn get_album_cover_image_from_track_creds(spotify: &ClientCredsSpotify, track_id: &str) -> Result<Option<Image>> {
-    let track_id = TrackId::from_id(track_id)?;
-    
-    let track: FullTrack = spotify.track(track_id, None).await?;
-    
-    Ok(track.album.images.into_iter().next())
+pub(crate) async fn get_album_cover_image(spotify: &ClientCredsSpotify, album_id: Option<&String>) -> Result<Option<Image>> {
+    match album_id {
+        None => return Ok(None),
+        Some(id) => {
+            let album_id = AlbumId::from_id(id)?;
+
+            let album: FullAlbum = spotify.album(album_id, None).await?;
+
+            Ok(album.images.into_iter().next())
+        }
+    }
 }
 
-pub(crate) fn extract_album_id(link: &str) -> Option<String> {
-    let re = Regex::new(r"https://open\.spotify\.com/album/([a-zA-Z0-9]+)").expect("unable to compile regex");
+pub(crate) async fn get_album_track_ids(client: &Arc<ClientCredsSpotify>, album_id: String) -> Vec<String> {
+    let album_id = match AlbumId::from_id(album_id) {
+        Ok(id) => id,
+        Err(e) => {
+            error!("Failed to get album id: {}", e.to_string());
+            return vec![]
+        }
+    };
 
-    Some(re.captures(link)?.get(1)?.as_str().to_string())
+    let album = client.album(album_id, None).await.unwrap();
+    album.tracks.items.into_iter().filter_map(|t| -> Option<String> {
+        match t.id {
+            Some(id) => Some(id.to_string().replace("spotify:track:", "")),
+            None => { error!("couldn't get track id"); None }
+        }
+    }).collect()
 }
 
-pub(crate) async fn get_album_cover_image(spotify: &AuthCodeSpotify, album_id: &str) -> Result<Option<Image>> {
-    let album_id = AlbumId::from_id(album_id)?;
-    
-    let album: FullAlbum = spotify.album(album_id, None).await?;
-    
-    Ok(album.images.into_iter().next())
+pub(crate) async fn get_track_ids<'a>(client: &Arc<ClientCredsSpotify>, spotify_ids: &'a Vec<IdType>) -> Vec<PlayableId<'a>> {
+    let mut track_ids = vec![];
+
+    for id in spotify_ids {
+        match id {
+            IdType::Track(t) => {
+                if let Ok(track_id) = TrackId::from_id(t) {
+                    track_ids.push(PlayableId::from(track_id));
+                }
+            },
+            IdType::Album(a) => {
+                let raw_album_track_ids = get_album_track_ids(client, a.to_string()).await;
+                track_ids.extend(raw_album_track_ids.into_iter().filter_map(|id| { Some(PlayableId::from(TrackId::from_id(id).ok()?))}));
+            }
+        }
+    }
+
+    track_ids
 }
 
-pub(crate) async fn get_album_cover_image_creds(spotify: &ClientCredsSpotify, album_id: &str) -> Result<Option<Image>> {
-    let album_id = AlbumId::from_id(album_id)?;
-    
-    let album: FullAlbum = spotify.album(album_id, None).await?;
-    
-    Ok(album.images.into_iter().next())
+pub(crate) async fn get_album_images(client: &Arc<ClientCredsSpotify>, spotify_ids: &Vec<IdType>) -> OrderSet<String> {
+    let mut images = OrderSet::new();
+
+    for id in spotify_ids {
+        match id {
+            IdType::Track(t) => {
+                if let Ok(image) = get_album_cover_image_from_track(client, &t).await {
+                    if let Some(img) = image {
+                        images.insert(img.url);
+                    }
+                }
+            },
+            IdType::Album(a) => {
+                if let Ok(image) = get_album_cover_image(client, Some(&a)).await {
+                    if let Some(img) = image {
+                        images.insert(img.url);
+                    }
+                }
+            }
+        }
+    }
+
+    images
 }
