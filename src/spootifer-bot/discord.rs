@@ -53,7 +53,17 @@ impl EventHandler for Handler {
 
         info!("got message containing spotify link");
 
-        let user_guilds = match get_user_guilds_by_guild_id(&self.conn, new_message.guild_id.unwrap().to_string().as_str()) {
+        let guild_id = match new_message.guild_id {
+            Some(id) => {
+                id
+            }
+            None => {
+                error!("message not in a guild");
+                return;
+            }
+        };
+
+        let user_guilds = match get_user_guilds_by_guild_id(&self.conn, guild_id.to_string().as_str()) { 
             Ok(u) => u,
             Err(e) => {
                 error!("error fetching guilds: {}", e);

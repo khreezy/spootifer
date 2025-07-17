@@ -33,7 +33,13 @@ pub(crate) enum IdType {
 }
 
 pub(crate) fn extract_ids(link: &str) -> Vec<IdType> {
-    let re = Regex::new(r"(((?:https?://open\.spotify\.com/track/|https?://open\.spotify\.com/album/|spotify:track:|spotify:album:)([a-zA-Z0-9]+))|https?://spotify.link/[a-zA-Z0-9]+)").unwrap();
+    let re = match Regex::new(r"(((?:https?://open\.spotify\.com/track/|https?://open\.spotify\.com/album/|spotify:track:|spotify:album:)([a-zA-Z0-9]+))|https?://spotify.link/[a-zA-Z0-9]+)") {
+        Ok(re) => re,
+        Err(e) => {
+            error!("Failed to compile regex: {}", e);
+            return vec![];
+        }
+    };
 
     let matches = re.captures_iter(link);
 
@@ -181,7 +187,14 @@ pub(crate) async fn get_album_track_ids(client: &Arc<ClientCredsSpotify>, album_
         }
     };
 
-    let album = client.album(album_id, None).await.unwrap();
+    let album = match client.album(album_id, None).await {
+        Ok(a) => a,
+        Err(e) => {
+            error!("Failed to get album: {}", e.to_string());
+            return vec![]
+        }
+    };
+
     album.tracks.items.into_iter().filter_map(|t| -> Option<String> {
         match t.id {
             Some(id) => Some(id.to_string().replace("spotify:track:", "")),
