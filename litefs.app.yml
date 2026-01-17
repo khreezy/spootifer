@@ -36,7 +36,7 @@ exec:
     if-candidate: true
 
   - cmd: "/spootifer/spootifer"
-  
+
 # The lease section specifies how the cluster will be managed. We're using the
 # "consul" lease type so that our application can dynamically change the primary.
 #

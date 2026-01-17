@@ -1,4 +1,11 @@
 services:
+  # Tidal does not allow localhost redirect uris, so you can run a cloudflared tunnel (or similar) to expose it
+  tunnel:
+    container_name: cloudflared-tunnel
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel run
+    env_file: .cloudflared.env
   migrate:
     build:
       dockerfile: Dockerfile.local
@@ -23,5 +30,8 @@ services:
     env_file:
       - .env
     entrypoint: "/spootifer/spootifer/spootifer-rust"
+networks:
+  default:
+    name: app
 volumes:
   db:
