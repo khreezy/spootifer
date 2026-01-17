@@ -12,7 +12,7 @@ kill_timeout = "5s"
   auto_rollback = true
 
 [env]
-  SPOTIFY_REDIRECT_URI = "https://spootifer.burningdownthe.haus/callback"
+  BASE_REDIRECT_URI = "https://spootifer.burningdownthe.haus"
   DATABASE_PATH = "/litefs/spootifer.db"
   RUST_LOG = "info"
 

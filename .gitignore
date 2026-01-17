@@ -12,3 +12,4 @@ spootifer
 # Added by cargo
 
 /target
+.cloudflared.env

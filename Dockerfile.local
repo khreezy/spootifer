@@ -5,7 +5,7 @@ WORKDIR /spootifer
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
-FROM chef AS  builder
+FROM chef AS builder
 WORKDIR /spootifer
 COPY --from=planner /spootifer/recipe.json recipe.json
 RUN apt update
@@ -25,7 +25,10 @@ RUN apt update
 RUN apt -y upgrade
 RUN apt install -y openssl libssl-dev ca-certificates
 COPY --from=builder /spootifer/target/release/spootifer-rust ./spootifer/spootifer/spootifer-rust
-COPY --from=builder /spootifer/setup-db.sh ./
+COPY --from=builder /spootifer/setup-db.sh ./setup-db.sh
+RUN ls -la
+RUN sed -i 's/\r$//' ./setup-db.sh  && \
+    chmod +x ./setup-db.sh
 RUN ./setup-db.sh
 EXPOSE 8080
 EXPOSE 8081
