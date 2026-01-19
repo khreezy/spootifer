@@ -1,14 +1,16 @@
 use crate::{
-    db::{AuthRequest, IntoOAuthToken, OAuthToken},
+    db::{AuthRequest, OAuthToken},
     spotify::init_spotify,
-    tidal::{get_redirect_uri, init_tidal, DEFAULT_SCOPES},
+    tidal::{get_redirect_uri, init_tidal},
 };
+use chrono::Utc;
+use oauth2::PkceCodeVerifier;
+use rsgentidal::client::TidalClient;
 use rspotify::clients::BaseClient;
-use rspotify::{prelude::OAuthClient, AuthCodeSpotify, ClientError};
+use rspotify::{AuthCodeSpotify, ClientError, prelude::OAuthClient};
 use serde::ser::StdError;
 use std::fmt::{Display, Formatter};
 use std::{error::Error, fmt::Debug};
-use tidalrs::TidalClient;
 
 #[derive(Debug)]
 pub struct AuthError {
@@ -85,7 +87,7 @@ impl ExchangeToken for AuthCodeSpotify {
             None => {
                 return Err(AuthError {
                     msg: String::from("failed to get token"),
-                })
+                });
             }
         };
 
@@ -101,21 +103,18 @@ impl ExchangeToken for TidalClient {
         code: String,
         user_id: i64,
     ) -> Result<OAuthToken, AuthError> {
-        let redirect_uri = get_redirect_uri()?;
-
         let client = init_tidal()?;
+
+        let Some(stored_verifier) = auth_request.pkce_code_verifier else {
+            return Err(AuthError {
+                msg: String::from("auth request missing pkce code verifier"),
+            });
+        };
+
+        let pkce_verifier = PkceCodeVerifier::new(stored_verifier);
+
         let token = match client
-            .pkce_authorize(
-                code.as_str(),
-                redirect_uri.as_str(),
-                auth_request
-                    .pkce_code_verifier
-                    .ok_or(AuthError {
-                        msg: String::from("missing code verifier on auth request"),
-                    })?
-                    .as_str(),
-                DEFAULT_SCOPES,
-            )
+            .exchange_code_for_token(pkce_verifier, oauth2::AuthorizationCode::new(code))
             .await
         {
             Ok(t) => t,
@@ -124,6 +123,42 @@ impl ExchangeToken for TidalClient {
 
         token.into_oauth_token(user_id).ok_or(AuthError {
             msg: String::from("failed to get oauth token from token"),
+        })
+    }
+}
+
+pub trait IntoOAuthToken {
+    fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken>;
+}
+
+impl IntoOAuthToken for rsgentidal::client::Token {
+    fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken> {
+        Some(OAuthToken {
+            user_id,
+            refresh_token: self.refresh_token.clone(),
+            access_token: self.access_token.clone(),
+            expiry_time: self.expiry.clone(),
+            token_type: String::from("Bearer"),
+            deleted_at: None,
+            created_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+            for_service: String::from("tidal"),
+        })
+    }
+}
+
+impl IntoOAuthToken for rspotify::Token {
+    fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken> {
+        Some(OAuthToken {
+            user_id,
+            refresh_token: self.refresh_token.clone()?,
+            access_token: self.access_token.clone(),
+            expiry_time: self.expires_at?.to_string(),
+            token_type: String::from("Bearer"),
+            deleted_at: None,
+            created_at: Utc::now().to_string(),
+            updated_at: Utc::now().to_string(),
+            for_service: "spotify".to_string(),
         })
     }
 }

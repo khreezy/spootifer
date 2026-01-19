@@ -1,5 +1,3 @@
-use crate::db::{IntoOAuthToken, OAuthToken};
-use chrono::Utc;
 use log::error;
 use ordermap::OrderSet;
 use regex::Regex;
@@ -137,7 +135,7 @@ pub(crate) fn init_spotify() -> Result<AuthCodeSpotify> {
     };
 
     let base_redirect_uri = url::Url::parse(env::var("BASE_REDIRECT_URI")?.as_str())?;
-    let redirect_uri = String::from(base_redirect_uri.join("/spotify/callback")?.as_str());
+    let redirect_uri = String::from(base_redirect_uri.join("/callback")?.as_str());
 
     let oauth = OAuth {
         scopes: scopes!("playlist-modify-public"),
@@ -279,20 +277,4 @@ pub(crate) async fn get_album_images(
     }
 
     images
-}
-
-impl IntoOAuthToken for Token {
-    fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken> {
-        Some(OAuthToken {
-            user_id,
-            refresh_token: self.refresh_token.clone()?,
-            access_token: self.access_token.clone(),
-            expiry_time: self.expires_in.to_string(),
-            token_type: String::from("Bearer"),
-            deleted_at: None,
-            created_at: Utc::now().to_string(),
-            updated_at: Utc::now().to_string(),
-            for_service: "spotify".to_string(),
-        })
-    }
 }
