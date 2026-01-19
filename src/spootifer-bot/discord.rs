@@ -1,34 +1,39 @@
 use crate::db::{
     create_auth_request, first_or_create_user_by_discord_user_id,
-    first_or_create_user_guild_by_user_id_and_guild_id, get_oauth_token_by_user_id,
-    get_user_by_discord_user_id, get_user_by_user_id, get_user_guilds_by_guild_id,
-    insert_oauth_token, update_user_guild_spotify_playlist_id, IntoOAuthToken, OAuthToken,
+    first_or_create_user_guild_by_user_id_and_guild_id, get_oauth_token_by_user_id_and_service,
+    get_user_by_discord_user_id, get_user_by_user_id, get_user_guilds_by_guild_id_and_service,
+    update_user_guild_playlist_id,
 };
 use crate::spotify::{
     contains_spotify_link, extract_ids, get_album_images, get_track_ids, init_spotify,
     init_spotify_from_token,
 };
-use crate::tidal::init_tidal;
+use crate::tidal::{contains_tidal_link, init_tidal};
 use crate::{spotify, tidal};
 use async_std::task;
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
 use log::{error, info};
 use oauth2::PkceCodeChallenge;
+use rsgentidal::apis::Api;
+use rsgentidal::client::Token;
+use rsgentidal::models::{
+    self, PlaylistItemsRelationshipAddOperationPayload,
+    PlaylistItemsRelationshipAddOperationPayloadData,
+};
 use rspotify::model::PlaylistId;
 use rspotify::prelude::*;
-use rspotify::{scopes, ClientCredsSpotify, Token};
+use rspotify::{ClientCredsSpotify, scopes};
 use rusqlite::Connection;
 use serenity::all::Message;
 use serenity::all::ReactionType::Unicode;
 use serenity::async_trait;
-use serenity::futures::lock;
 use serenity::prelude::*;
-use std::env;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct Handler {
     pub(crate) conn: Arc<Mutex<Connection>>,
     pub(crate) spotify_client: Arc<ClientCredsSpotify>,
@@ -58,12 +63,46 @@ type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, new_message: Message) {
-        if !contains_spotify_link(new_message.content.as_str()) {
-            return;
+        let mut services = vec![];
+        let content = new_message.content.clone();
+
+        let has_spotify_link = contains_spotify_link(content.as_str());
+        let has_tidal_link = contains_tidal_link(content);
+
+        if has_spotify_link {
+            services.push("spotify")
+        }
+        if has_tidal_link {
+            services.push("tidal")
         }
 
-        info!("got message containing spotify link");
+        info!("got message containing {:?} link", services);
 
+        for service in services {
+            match service {
+                "spotify" => {
+                    self.clone()
+                        .handle_spotify_links(&ctx, new_message.clone())
+                        .await
+                }
+                "tidal" => {
+                    self.clone()
+                        .handle_tidal_links(&ctx, new_message.clone())
+                        .await
+                }
+                _ => (),
+            };
+        }
+
+        let mills500 = std::time::Duration::from_millis(500);
+        task::sleep(mills500).await;
+        info!("acknowledging message");
+        _ = new_message.react(&ctx, Unicode(String::from("✅"))).await;
+    }
+}
+
+impl Handler {
+    async fn handle_tidal_links(&self, ctx: &serenity::all::Context, new_message: Message) {
         let guild_id = match new_message.guild_id {
             Some(id) => id,
             None => {
@@ -72,14 +111,128 @@ impl EventHandler for Handler {
             }
         };
 
-        let user_guilds =
-            match get_user_guilds_by_guild_id(&self.conn, guild_id.to_string().as_str()) {
+        let user_guilds = match get_user_guilds_by_guild_id_and_service(
+            &self.conn,
+            guild_id.to_string().as_str(),
+            "tidal",
+        ) {
+            Ok(u) => u,
+            Err(e) => {
+                error!("error fetching guilds: {}", e);
+                return;
+            }
+        };
+
+        let tidal_ids = tidal::extract_ids(&new_message.content);
+
+        for guild in user_guilds {
+            let user = match get_user_by_user_id(&self.conn, guild.user_id) {
                 Ok(u) => u,
                 Err(e) => {
-                    error!("error fetching guilds: {}", e);
-                    return;
+                    error!("Failed to get user: {:?}", e);
+                    continue;
                 }
             };
+
+            let user_id = match user.id {
+                Some(i) => i,
+                None => {
+                    error!("user has not been created");
+                    continue;
+                }
+            };
+
+            let tidal_token =
+                match get_oauth_token_by_user_id_and_service(&self.conn, user_id, "tidal") {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error!("Failed to get tidal token: {:?}", e);
+                        continue;
+                    }
+                };
+
+            let expires_at = match DateTime::parse_from_str(tidal_token.expiry_time.as_str(), "%+")
+            {
+                Ok(t) => t.to_utc(),
+                Err(e) => {
+                    error!("Error parsing expires at time: {}", e);
+                    continue;
+                }
+            }
+            .to_utc();
+
+            let token = Token {
+                access_token: tidal_token.access_token,
+                refresh_token: tidal_token.refresh_token,
+                expiry: tidal_token.expiry_time,
+            };
+
+            let tidal_client = match tidal::init_tidal_with_token(token) {
+                Ok(t) => t,
+                Err(e) => {
+                    error!("error initializing tidal client: {}", e);
+                    continue;
+                }
+            };
+
+            let p = match guild.playlist_id {
+                Some(i) => i,
+                None => {
+                    error!("playlist id not present");
+                    continue;
+                }
+            };
+
+            let track_ids = match tidal::get_track_ids(&tidal_client, &tidal_ids).await {
+                Ok(t) => t,
+                Err(e) => {
+                    error!("error fetching track ids: {}", e);
+                    continue;
+                }
+            };
+
+            let track_ids_payload_data = track_ids.into_iter().map(|s: String| -> PlaylistItemsRelationshipAddOperationPayloadData {
+               PlaylistItemsRelationshipAddOperationPayloadData { id: s, meta: None, r#type: models::playlist_items_relationship_add_operation_payload_data::Type::Tracks }
+            }).collect();
+
+            match tidal_client
+                .playlists_api()
+                .add_items_to_playlist(
+                    p.as_str(),
+                    None,
+                    Some(PlaylistItemsRelationshipAddOperationPayload {
+                        data: track_ids_payload_data,
+                        meta: None,
+                    }),
+                )
+                .await
+            {
+                Ok(_) => {}
+                Err(e) => error!("failed to add tracks to playlist: {}", e),
+            }
+        }
+    }
+
+    async fn handle_spotify_links(self, ctx: &serenity::all::Context, new_message: Message) {
+        let guild_id = match new_message.guild_id {
+            Some(id) => id,
+            None => {
+                error!("message not in a guild");
+                return;
+            }
+        };
+
+        let user_guilds = match get_user_guilds_by_guild_id_and_service(
+            &self.conn,
+            guild_id.to_string().as_str(),
+            "spotify",
+        ) {
+            Ok(u) => u,
+            Err(e) => {
+                error!("error fetching guilds: {}", e);
+                return;
+            }
+        };
 
         let spotify_ids = extract_ids(&new_message.content.to_string());
 
@@ -107,26 +260,27 @@ impl EventHandler for Handler {
                 }
             };
 
-            let spotify_token = match get_oauth_token_by_user_id(&self.conn, user_id) {
-                Ok(t) => t,
-                Err(e) => {
-                    error!("Failed to get spotify token: {:?}", e);
-                    continue;
-                }
-            };
+            let spotify_token =
+                match get_oauth_token_by_user_id_and_service(&self.conn, user_id, "spotify") {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error!("Failed to get spotify token: {:?}", e);
+                        continue;
+                    }
+                };
 
             info!("token expires at: {}", spotify_token.expiry_time);
-            let expires_at = match DateTime::parse_from_rfc3339(spotify_token.expiry_time.as_str())
-            {
-                Ok(t) => t.to_utc(),
-                Err(e) => {
-                    error!("Error parsing expires at time: {}", e);
-                    continue;
+            let expires_at =
+                match DateTime::parse_from_str(spotify_token.expiry_time.as_str(), "%+") {
+                    Ok(t) => t.to_utc(),
+                    Err(e) => {
+                        error!("Error parsing expires at time: {}", e);
+                        continue;
+                    }
                 }
-            }
-            .to_utc();
+                .to_utc();
 
-            let token = Token {
+            let token = rspotify::Token {
                 access_token: spotify_token.access_token,
                 refresh_token: Some(spotify_token.refresh_token),
                 expires_at: Some(expires_at),
@@ -142,7 +296,7 @@ impl EventHandler for Handler {
                 }
             };
 
-            let p = match guild.spotify_playlist_id {
+            let p = match guild.playlist_id {
                 Some(i) => i,
                 None => {
                     error!("playlist id not present");
@@ -171,11 +325,6 @@ impl EventHandler for Handler {
                 }
             };
         }
-
-        let mills500 = std::time::Duration::from_millis(500);
-        task::sleep(mills500).await;
-        info!("acknowledging message");
-        _ = new_message.react(&ctx, Unicode(String::from("✅"))).await;
 
         let album_image_urls = get_album_images(&self.spotify_client, &spotify_ids).await;
 
@@ -215,6 +364,7 @@ pub(crate) async fn authorize_spotify<'a>(ctx: CommandCtx<'_>) -> Result<()> {
         &ctx.data().conn,
         guild_id,
         user_id,
+        "spotify",
     ) {
         Ok(u) => u,
         Err(e) => {
@@ -299,6 +449,7 @@ pub(crate) async fn authorize_tidal<'a>(ctx: CommandCtx<'_>) -> Result<()> {
         &ctx.data().conn,
         guild_id,
         user_id,
+        "tidal",
     ) {
         Ok(u) => u,
         Err(e) => {
@@ -317,14 +468,8 @@ pub(crate) async fn authorize_tidal<'a>(ctx: CommandCtx<'_>) -> Result<()> {
 
     let (pkce_code, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
-    let state = Uuid::new_v4().to_string();
-
-    let auth_url = tidal_client.get_authorize_url(
-        tidal::get_redirect_uri()?.as_str(),
-        tidal::DEFAULT_SCOPES,
-        pkce_code.as_str(),
-        Some(state.as_str()),
-    )?;
+    let (auth_url, state) =
+        tidal_client.get_authorize_url_and_state(pkce_code.clone(), tidal::DEFAULT_SCOPES.to_vec());
 
     _ = match create_auth_request(
         &ctx.data().conn,
@@ -357,12 +502,30 @@ pub(crate) async fn authorize_tidal<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     }
 }
 
+fn extract_playlist_id(service: &str, msg: String) -> Option<String> {
+    if service == "spotify" {
+        spotify::extract_playlist_id(msg)
+    } else if service == "tidal" {
+        tidal::extract_playlist_id(msg)
+    } else {
+        None
+    }
+}
+
 #[poise::command(slash_command)]
 pub(crate) async fn register_playlist<'a>(
     ctx: CommandCtx<'_>,
     playlist_link: String,
 ) -> Result<()> {
-    let playlist_id = match spotify::extract_playlist_id(playlist_link) {
+    let service = if spotify::contains_spotify_link(playlist_link.as_str()) {
+        "spotify"
+    } else if tidal::contains_tidal_link(playlist_link.clone()) {
+        "tidal"
+    } else {
+        return Err(DiscordError.into());
+    };
+
+    let playlist_id = match extract_playlist_id(service, playlist_link.clone()) {
         Some(id) => id,
         None => {
             error!("failed to parse playlist id");
@@ -392,7 +555,7 @@ pub(crate) async fn register_playlist<'a>(
     let user = match get_user_by_discord_user_id(&ctx.data().conn, discord_user_id) {
         Ok(u) => u,
         Err(e) => {
-            error!("failed to update playlist id: {:?}", e);
+            error!("failed to get user: {:?}", e);
             return Err(DiscordError.into());
         }
     };
@@ -402,11 +565,12 @@ pub(crate) async fn register_playlist<'a>(
         None => return Err(DiscordError.into()),
     };
 
-    _ = match update_user_guild_spotify_playlist_id(
+    _ = match update_user_guild_playlist_id(
         &ctx.data().conn,
         guild_id,
         user_id,
         playlist_id,
+        service,
     ) {
         Ok(_) => {}
         Err(e) => {
@@ -426,38 +590,4 @@ pub(crate) async fn register_playlist<'a>(
         Ok(_) => Ok(()),
         Err(e) => Err(e.into()),
     }
-}
-
-fn insert_oauth_token_for_discord_user(
-    conn: &Arc<Mutex<Connection>>,
-    discord_user_id: String,
-    token: Box<dyn IntoOAuthToken>,
-) -> Result<()> {
-    let user_id = match get_user_by_discord_user_id(&conn, discord_user_id.as_str()) {
-        Ok(u) => u.id.ok_or("failed to get user id")?,
-        Err(e) => return Err(DiscordError.into()),
-    };
-
-    let oauth_token = token
-        .into_oauth_token(user_id)
-        .ok_or("failed to get oauth token from service token")?;
-
-    let mut locked_conn = match conn.try_lock() {
-        Ok(c) => c,
-        Err(_) => return Err(DiscordError.into()),
-    };
-
-    let tx = locked_conn.transaction()?;
-
-    match insert_oauth_token(&tx, oauth_token) {
-        Ok(_) => {}
-        Err(_) => {
-            return Err(DiscordError.into());
-        }
-    };
-
-    return match tx.commit() {
-        Ok(_) => Ok(()),
-        Err(_) => Err(DiscordError.into()),
-    };
 }

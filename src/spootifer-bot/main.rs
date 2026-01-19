@@ -5,17 +5,16 @@ mod spotify;
 mod tidal;
 
 use crate::auth::ExchangeToken;
-use crate::db::{
-    get_auth_request_by_state, get_user_by_discord_user_id, insert_oauth_token, OAuthToken,
-};
+use crate::db::{get_auth_request_by_state, get_user_by_discord_user_id, insert_oauth_token};
 use crate::discord::Handler;
 use async_std::task;
 use axum::extract::Query;
 use axum::routing::get;
-use axum::{extract::Form, extract::State, Router};
+use axum::{Router, extract::Form, extract::State};
 use clap::Parser;
 use http::StatusCode;
 use log::{error, info};
+use rsgentidal::client::TidalClient;
 use rspotify::{AuthCodeSpotify, ClientCredsSpotify, Credentials};
 use rusqlite::Connection;
 use serde::Deserialize;
@@ -25,7 +24,6 @@ use std::error::Error;
 use std::fmt::Debug;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
-use tidalrs::TidalClient;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -169,7 +167,7 @@ async fn complete_auth(
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "user id missing".to_string(),
-            )
+            );
         }
     };
     let maybe_oauth_token = match auth_request.for_service.as_str() {
@@ -181,7 +179,7 @@ async fn complete_auth(
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "bad service name".to_string(),
-            )
+            );
         }
     };
 

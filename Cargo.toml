@@ -1,7 +1,7 @@
 [package]
 name = "spootifer"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 rust-version = "1.88.0"
 
 [[bin]]
@@ -12,10 +12,10 @@ path = "src/spootifer-bot/main.rs"
 serenity = {  version = "0.12.2", features = ["model"] }
 rspotify = "0.13.3"
 clap = { version = "4.5.20", features = ["derive"] }
-refinery = { version = "0.8.14", features = ["rusqlite-bundled"]}
+refinery = { version = "0.9", features = ["rusqlite-bundled"]}
 regex = "1.11.1"
 reqwest = {  version = "0.12.9", features = ["blocking"] }
-rusqlite = { version = "0.31.0", features = ["bundled"] }
+rusqlite = { version = "0.37.0", features = ["bundled"] }
 log = "0.4.22"
 axum = {  version = "0.8.8" }
 http = "1.1.0"
@@ -28,9 +28,9 @@ poise = { version = "0.6.1" }
 uuid = { version = "1.11.0", features = ["v4"] }
 time = "0.3.36"
 ordermap = "0.5.8"
-tidalrs = { git = "https://github.com/khreezy/tidalrs.git" }
 url = "2.5.8"
 oauth2 = "5.0.0"
+rsgentidal =  { git = "https://github.com/khreezy/rsgentidal.git" }
 
 [dev-dependencies]
 tokio-test = "0.4"
