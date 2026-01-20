@@ -78,7 +78,7 @@ impl EventHandler for Handler {
 
         info!("got message containing {:?} link", services);
 
-        for service in services {
+        for service in services.clone() {
             match service {
                 "spotify" => {
                     self.clone()
@@ -94,10 +94,12 @@ impl EventHandler for Handler {
             };
         }
 
-        let mills500 = std::time::Duration::from_millis(500);
-        task::sleep(mills500).await;
-        info!("acknowledging message");
-        _ = new_message.react(&ctx, Unicode(String::from("✅"))).await;
+        if services.len() != 0 {
+            let mills500 = std::time::Duration::from_millis(500);
+            task::sleep(mills500).await;
+            info!("acknowledging message");
+            _ = new_message.react(&ctx, Unicode(String::from("✅"))).await;
+        }
     }
 }
 
