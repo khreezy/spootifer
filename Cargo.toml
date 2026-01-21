@@ -30,7 +30,6 @@ time = "0.3.36"
 ordermap = "0.5.8"
 url = "2.5.8"
 oauth2 = "5.0.0"
-rsgentidal =  { git = "https://github.com/khreezy/rsgentidal.git" }
-
+barnacle =  { git = "https://github.com/khreezy/barnacle.git" }
 [dev-dependencies]
 tokio-test = "0.4"

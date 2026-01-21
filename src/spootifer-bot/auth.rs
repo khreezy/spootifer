@@ -1,11 +1,10 @@
 use crate::{
     db::{AuthRequest, OAuthToken},
     spotify::init_spotify,
-    tidal::{get_redirect_uri, init_tidal},
+    tidal::init_tidal,
 };
+use barnacle::client::TidalClient;
 use chrono::Utc;
-use oauth2::PkceCodeVerifier;
-use rsgentidal::client::TidalClient;
 use rspotify::clients::BaseClient;
 use rspotify::{AuthCodeSpotify, ClientError, prelude::OAuthClient};
 use serde::ser::StdError;
@@ -111,12 +110,7 @@ impl ExchangeToken for TidalClient {
             });
         };
 
-        let pkce_verifier = PkceCodeVerifier::new(stored_verifier);
-
-        let token = match client
-            .exchange_code_for_token(pkce_verifier, oauth2::AuthorizationCode::new(code))
-            .await
-        {
+        let token = match client.exchange_code_for_token(stored_verifier, code).await {
             Ok(t) => t,
             Err(e) => return Err(AuthError { msg: e.to_string() }),
         };
@@ -131,7 +125,7 @@ pub trait IntoOAuthToken {
     fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken>;
 }
 
-impl IntoOAuthToken for rsgentidal::client::Token {
+impl IntoOAuthToken for barnacle::client::Token {
     fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken> {
         Some(OAuthToken {
             user_id,
