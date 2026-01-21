@@ -1,10 +1,12 @@
 use crate::error;
 use barnacle::apis::Api;
-use barnacle::client::{OAuthConfig, TidalClient, TidalClientConfig, Token};
+use barnacle::client::{OAuthConfig, TidalClient, TidalClientConfig, TidalClientError, Token};
 use regex::Regex;
 use std::env;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::thread::sleep;
+use std::time::Duration;
 
 static TIDAL_DOMAIN: &str = "tidal.com";
 static TIDAL_ALBUM_LINK: &str = "https://tidal.com/album";
@@ -12,18 +14,31 @@ static TIDAL_ALBUM_LINK: &str = "https://tidal.com/album";
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 
 #[derive(Debug, Clone)]
-pub struct TidalError {
-    msg: String,
-    cause: String,
+pub enum TidalError {
+    ClientInitializationError { cause: String },
+    ApiError { api: String, cause: String },
 }
 
 impl Display for TidalError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "error ")
+        match self {
+            Self::ClientInitializationError { cause } => {
+                write!(f, "failed to initialize client: {}", cause)
+            }
+            Self::ApiError { api, cause } => write!(f, "failed call {} api: {}", api, cause),
+        }
     }
 }
 
 impl Error for TidalError {}
+
+impl From<TidalClientError> for TidalError {
+    fn from(value: TidalClientError) -> Self {
+        Self::ClientInitializationError {
+            cause: value.to_string(),
+        }
+    }
+}
 
 pub(crate) fn init_tidal() -> Result<TidalClient> {
     let client_id = env::var("TIDAL_CLIENT_ID")?;
@@ -39,14 +54,31 @@ pub(crate) fn init_tidal() -> Result<TidalClient> {
         auth_token: None,
     };
 
-    match barnacle::client::TidalClient::new(config) {
-        Ok(c) => Ok(c),
-        Err(e) => Err(TidalError {
-            msg: String::from("failed to initialize tidal client"),
-            cause: e.to_string(),
-        }
-        .into()),
-    }
+    Ok(barnacle::client::TidalClient::new(config)?)
+}
+
+pub(crate) async fn init_tidal_with_secret() -> Result<TidalClient> {
+    let client_id = env::var("TIDAL_CLIENT_ID")?;
+    let client_secret = env::var("TIDAL_CLIENT_SECRET")?;
+
+    let redirect_uri = get_redirect_uri()?;
+
+    let config = TidalClientConfig {
+        oauth_config: OAuthConfig {
+            redirect_uri: redirect_uri,
+            client_id: client_id,
+            client_secret: Some(client_secret),
+        },
+        auth_token: None,
+    };
+
+    let client = barnacle::client::TidalClient::new(config)?;
+
+    let token = client
+        .exchange_client_credentials_for_token(DEFAULT_SCOPES.to_vec())
+        .await?;
+
+    Ok(client.with_token(token)?)
 }
 
 pub(crate) fn init_tidal_with_token(token: Token) -> Result<TidalClient> {
@@ -63,14 +95,7 @@ pub(crate) fn init_tidal_with_token(token: Token) -> Result<TidalClient> {
         auth_token: Some(token),
     };
 
-    match barnacle::client::TidalClient::new(config) {
-        Ok(c) => Ok(c),
-        Err(e) => Err(TidalError {
-            msg: String::from("failed to initialize tidal client"),
-            cause: e.to_string(),
-        }
-        .into()),
-    }
+    Ok(barnacle::client::TidalClient::new(config)?)
 }
 
 pub static DEFAULT_SCOPES: &'static [&'static str] = &[
@@ -141,23 +166,47 @@ pub(crate) async fn get_album_track_ids(
     client: &TidalClient,
     album_id: String,
 ) -> Result<Vec<String>> {
-    let album_tracks_resp = client
+    let mut track_ids: Vec<String> = vec![];
+    let album_tracks = client
         .albums_api()
         .get_album_items(album_id.as_str(), None, None, None, None)
         .await?;
 
-    let Some(album_track_data) = album_tracks_resp.data else {
-        return Err(TidalError {
-            msg: String::from("failed to get album track ids"),
-            cause: String::from("response missing track  data"),
+    let Some(album_tracks_data) = album_tracks.data else {
+        return Err(TidalError::ApiError {
+            api: String::from("album_track_ids"),
+            cause: String::from("track data missing"),
         }
         .into());
     };
 
-    Ok(album_track_data
-        .into_iter()
-        .map(|t: barnacle::models::AlbumsItemsResourceIdentifier| -> String { t.id })
-        .collect())
+    for track_id in album_tracks_data {
+        track_ids.push(track_id.id)
+    }
+
+    let mut maybe_next = album_tracks.links.meta;
+    while let Some(next) = maybe_next.clone() {
+        let album_tracks = client
+            .albums_api()
+            .get_album_items(album_id.as_str(), Some(&next.next_cursor), None, None, None)
+            .await?;
+        let Some(album_tracks_data) = album_tracks.data else {
+            return Err(TidalError::ApiError {
+                api: String::from("album_track_ids"),
+                cause: String::from("track data missing"),
+            }
+            .into());
+        };
+
+        for track_id in album_tracks_data {
+            track_ids.push(track_id.id)
+        }
+
+        sleep(Duration::from_millis(200));
+        maybe_next = album_tracks.links.meta
+    }
+
+    Ok(track_ids)
 }
 pub(crate) async fn get_track_ids(
     client: &TidalClient,
@@ -168,7 +217,10 @@ pub(crate) async fn get_track_ids(
     for id in tidal_ids {
         match &mut get_album_track_ids(client, id.clone()).await {
             Ok(v) => track_ids.append(v),
-            Err(_) => track_ids.push(id.clone()),
+            Err(e) => {
+                error!("failed to fetch album ids: {}", e);
+                track_ids.push(id.clone())
+            }
         }
     }
 

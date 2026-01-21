@@ -59,14 +59,23 @@ async fn main() {
 
     let spotify_client: ClientCredsSpotify = ClientCredsSpotify::new(credentials);
 
+    let tidal_client = match tidal::init_tidal_with_secret().await {
+        Ok(c) => c,
+        Err(e) => {
+            panic!("error initializing tidal client: {}", e)
+        }
+    };
+
     let handler = Handler {
         conn: conn.clone(),
         spotify_client: Arc::new(spotify_client.clone()),
+        tidal_client: Arc::new(tidal_client.clone()),
     };
 
     let handler2 = Handler {
         conn: conn.clone(),
         spotify_client: Arc::new(spotify_client.clone()),
+        tidal_client: Arc::new(tidal_client.clone()),
     };
 
     let framework = poise::Framework::builder()
