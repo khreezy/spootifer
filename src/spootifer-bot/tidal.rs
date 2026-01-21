@@ -1,7 +1,7 @@
 use crate::error;
+use barnacle::apis::Api;
+use barnacle::client::{OAuthConfig, TidalClient, TidalClientConfig, Token};
 use regex::Regex;
-use rsgentidal::apis::Api;
-use rsgentidal::client::{OAuthConfig, TidalClient, TidalClientConfig, Token};
 use std::env;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -39,7 +39,7 @@ pub(crate) fn init_tidal() -> Result<TidalClient> {
         auth_token: None,
     };
 
-    match rsgentidal::client::TidalClient::new(config) {
+    match barnacle::client::TidalClient::new(config) {
         Ok(c) => Ok(c),
         Err(e) => Err(TidalError {
             msg: String::from("failed to initialize tidal client"),
@@ -63,7 +63,7 @@ pub(crate) fn init_tidal_with_token(token: Token) -> Result<TidalClient> {
         auth_token: Some(token),
     };
 
-    match rsgentidal::client::TidalClient::new(config) {
+    match barnacle::client::TidalClient::new(config) {
         Ok(c) => Ok(c),
         Err(e) => Err(TidalError {
             msg: String::from("failed to initialize tidal client"),
@@ -82,12 +82,6 @@ pub static DEFAULT_SCOPES: &'static [&'static str] = &[
     "recommendations.read",
     "playback",
 ];
-
-pub(crate) fn tidal_link_regex() -> Regex {
-    Regex::new(
-        r"https://tidal\.com/playlist/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
-    ).expect("failed to compile tidal regex")
-}
 
 pub(crate) fn get_redirect_uri() -> Result<String> {
     let base_uri = env::var("BASE_REDIRECT_URI")?;
@@ -162,7 +156,7 @@ pub(crate) async fn get_album_track_ids(
 
     Ok(album_track_data
         .into_iter()
-        .map(|t: rsgentidal::models::AlbumsItemsResourceIdentifier| -> String { t.id })
+        .map(|t: barnacle::models::AlbumsItemsResourceIdentifier| -> String { t.id })
         .collect())
 }
 pub(crate) async fn get_track_ids(

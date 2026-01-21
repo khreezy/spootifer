@@ -11,15 +11,14 @@ use crate::spotify::{
 use crate::tidal::{contains_tidal_link, init_tidal};
 use crate::{spotify, tidal};
 use async_std::task;
-use chrono::DateTime;
-use log::{error, info};
-use oauth2::PkceCodeChallenge;
-use rsgentidal::apis::Api;
-use rsgentidal::client::Token;
-use rsgentidal::models::{
+use barnacle::apis::Api;
+use barnacle::client::Token;
+use barnacle::models::{
     self, PlaylistItemsRelationshipAddOperationPayload,
     PlaylistItemsRelationshipAddOperationPayloadData,
 };
+use chrono::DateTime;
+use log::{error, info};
 use rspotify::model::PlaylistId;
 use rspotify::prelude::*;
 use rspotify::{ClientCredsSpotify, scopes};
@@ -272,6 +271,7 @@ impl Handler {
                 };
 
             info!("token expires at: {}", spotify_token.expiry_time);
+
             let expires_at =
                 match DateTime::parse_from_str(spotify_token.expiry_time.as_str(), "%+") {
                     Ok(t) => t.to_utc(),
@@ -468,7 +468,7 @@ pub(crate) async fn authorize_tidal<'a>(ctx: CommandCtx<'_>) -> Result<()> {
         }
     };
 
-    let (pkce_code, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+    let (pkce_code, pkce_verifier) = tidal_client.generate_pkce_challenge_and_verifier();
 
     let (auth_url, state) =
         tidal_client.get_authorize_url_and_state(pkce_code.clone(), tidal::DEFAULT_SCOPES.to_vec());
