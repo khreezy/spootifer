@@ -12,7 +12,7 @@ use crate::tidal::{contains_tidal_link, init_tidal};
 use crate::{spotify, tidal};
 use async_std::task;
 use barnacle::apis::Api;
-use barnacle::client::Token;
+use barnacle::client::{TidalClient, Token};
 use barnacle::models::{
     self, PlaylistItemsRelationshipAddOperationPayload,
     PlaylistItemsRelationshipAddOperationPayloadData,
@@ -30,12 +30,15 @@ use serenity::prelude::*;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::{Arc, Mutex};
+use std::thread::sleep;
+use std::time::Duration;
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct Handler {
     pub(crate) conn: Arc<Mutex<Connection>>,
     pub(crate) spotify_client: Arc<ClientCredsSpotify>,
+    pub(crate) tidal_client: Arc<TidalClient>,
 }
 
 struct DiscordError;
@@ -103,7 +106,7 @@ impl EventHandler for Handler {
 }
 
 impl Handler {
-    async fn handle_tidal_links(&self, ctx: &serenity::all::Context, new_message: Message) {
+    async fn handle_tidal_links(&self, _: &serenity::all::Context, new_message: Message) {
         let guild_id = match new_message.guild_id {
             Some(id) => id,
             None => {
@@ -125,6 +128,23 @@ impl Handler {
         };
 
         let tidal_ids = tidal::extract_ids(&new_message.content);
+
+        let track_ids = match tidal::get_track_ids(&self.tidal_client, &tidal_ids).await {
+            Ok(t) => t,
+            Err(e) => {
+                error!("error fetching track ids: {}", e);
+                return;
+            }
+        };
+
+        let track_ids_payload_data: Vec<PlaylistItemsRelationshipAddOperationPayloadData> = track_ids.clone().into_iter().map(|s: String| -> PlaylistItemsRelationshipAddOperationPayloadData {
+                       PlaylistItemsRelationshipAddOperationPayloadData { id: s, meta: None, r#type: models::playlist_items_relationship_add_operation_payload_data::Type::Tracks }
+                    }).collect();
+
+        info!("{} tracks to add", track_ids_payload_data.len());
+
+        let chunked_data: Vec<&[PlaylistItemsRelationshipAddOperationPayloadData]> =
+            track_ids_payload_data.chunks(20).collect();
 
         for guild in user_guilds {
             let user = match get_user_by_user_id(&self.conn, guild.user_id) {
@@ -152,16 +172,6 @@ impl Handler {
                     }
                 };
 
-            let expires_at = match DateTime::parse_from_str(tidal_token.expiry_time.as_str(), "%+")
-            {
-                Ok(t) => t.to_utc(),
-                Err(e) => {
-                    error!("Error parsing expires at time: {}", e);
-                    continue;
-                }
-            }
-            .to_utc();
-
             let token = Token {
                 access_token: tidal_token.access_token,
                 refresh_token: tidal_token.refresh_token,
@@ -184,32 +194,28 @@ impl Handler {
                 }
             };
 
-            let track_ids = match tidal::get_track_ids(&tidal_client, &tidal_ids).await {
-                Ok(t) => t,
-                Err(e) => {
-                    error!("error fetching track ids: {}", e);
-                    continue;
+            for data in chunked_data.clone() {
+                match tidal_client
+                    .playlists_api()
+                    .add_items_to_playlist(
+                        p.as_str(),
+                        None,
+                        Some(PlaylistItemsRelationshipAddOperationPayload {
+                            data: data.to_vec(),
+                            meta: None,
+                        }),
+                    )
+                    .await
+                {
+                    Ok(_) => {
+                        info!("added {} items to playlist", data.len())
+                    }
+                    Err(e) => {
+                        error!("failed to add tracks to playlist: {}", e);
+                        continue;
+                    }
                 }
-            };
-
-            let track_ids_payload_data = track_ids.into_iter().map(|s: String| -> PlaylistItemsRelationshipAddOperationPayloadData {
-               PlaylistItemsRelationshipAddOperationPayloadData { id: s, meta: None, r#type: models::playlist_items_relationship_add_operation_payload_data::Type::Tracks }
-            }).collect();
-
-            match tidal_client
-                .playlists_api()
-                .add_items_to_playlist(
-                    p.as_str(),
-                    None,
-                    Some(PlaylistItemsRelationshipAddOperationPayload {
-                        data: track_ids_payload_data,
-                        meta: None,
-                    }),
-                )
-                .await
-            {
-                Ok(_) => {}
-                Err(e) => error!("failed to add tracks to playlist: {}", e),
+                sleep(Duration::from_millis(200))
             }
         }
     }

@@ -7,10 +7,10 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 WORKDIR /spootifer
-COPY --from=planner /spootifer/recipe.json recipe.json
 RUN apt update
 RUN apt -y upgrade
 RUN apt install openssl libssl-dev
+COPY --from=planner /spootifer/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 RUN apt-get install libssl-dev
 COPY Cargo.toml Cargo.lock ./
