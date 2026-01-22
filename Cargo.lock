@@ -309,7 +309,7 @@ dependencies = [
 [[package]]
 name = "barnacle"
 version = "0.0.1"
-source = "git+https://github.com/khreezy/barnacle.git#34f101bd0e827402ecfd88430ae39573a473b6c6"
+source = "git+https://github.com/khreezy/barnacle.git#0f90a2bada966536966d3721fe2571c720c7f183"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1628,7 +1628,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.21.7",
  "chrono",
  "getrandom",
  "http 1.4.0",
