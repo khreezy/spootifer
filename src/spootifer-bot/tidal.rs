@@ -1,10 +1,14 @@
 use crate::error;
-use barnacle::apis::Api;
-use barnacle::client::{OAuthConfig, TidalClient, TidalClientConfig, TidalClientError, Token};
+use crate::spotify::SpotifyResource;
+use log::info;
+use prawn::apis::Api;
+use prawn::client::{OAuthConfig, TidalClient, TidalClientConfig, TidalClientError, Token};
+use prawn::models::IncludedInner;
 use regex::Regex;
 use std::env;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -54,7 +58,7 @@ pub(crate) fn init_tidal() -> Result<TidalClient> {
         auth_token: None,
     };
 
-    Ok(barnacle::client::TidalClient::new(config)?)
+    Ok(prawn::client::TidalClient::new(config)?)
 }
 
 pub(crate) async fn init_tidal_with_secret() -> Result<TidalClient> {
@@ -72,7 +76,7 @@ pub(crate) async fn init_tidal_with_secret() -> Result<TidalClient> {
         auth_token: None,
     };
 
-    let client = barnacle::client::TidalClient::new(config)?;
+    let client = prawn::client::TidalClient::new(config)?;
 
     let token = client
         .exchange_client_credentials_for_token(DEFAULT_SCOPES.to_vec())
@@ -95,7 +99,7 @@ pub(crate) fn init_tidal_with_token(token: Token) -> Result<TidalClient> {
         auth_token: Some(token),
     };
 
-    Ok(barnacle::client::TidalClient::new(config)?)
+    Ok(prawn::client::TidalClient::new(config)?)
 }
 
 pub static DEFAULT_SCOPES: &'static [&'static str] = &[
@@ -225,4 +229,97 @@ pub(crate) async fn get_track_ids(
     }
 
     Ok(track_ids)
+}
+
+pub(crate) enum TidalResourceType {
+    Album,
+    Track,
+}
+
+pub(crate) async fn get_tidal_ids_from_spotify_resources(
+    client: Arc<TidalClient>,
+    spotify_resources: &Vec<SpotifyResource>,
+) -> Result<Vec<String>> {
+    let mut ids = vec![];
+
+    for resource in spotify_resources {
+        let search_string = resource.title.to_string() + " " + resource.artist.as_str();
+        info!("searching for {}", search_string);
+
+        let id = match resource.tidal_resource_type {
+            TidalResourceType::Album => {
+                let search = client
+                    .search_results_api()
+                    .get_search_result_albums(
+                        search_string.as_str(),
+                        None,
+                        None,
+                        None,
+                        Some(vec![String::from("albums")]),
+                    )
+                    .await?;
+
+                let top_albums = search.included.ok_or(TidalError::ApiError {
+                    api: "search".to_string(),
+                    cause: "relationships missing".to_string(),
+                })?;
+
+                let Some(IncludedInner::Albums(top_album)) = top_albums.iter().find(|i| -> bool {
+                    match i {
+                        IncludedInner::Albums(a) => {
+                            let Some(attrs) = a.attributes.clone() else {
+                                return false;
+                            };
+                            attrs.title == resource.title
+                        }
+                        _ => false,
+                    }
+                }) else {
+                    error!("no album results");
+                    continue;
+                };
+
+                top_album.id.clone()
+            }
+            TidalResourceType::Track => {
+                let search = client
+                    .search_results_api()
+                    .get_search_result_tracks(
+                        search_string.as_str(),
+                        None,
+                        None,
+                        None,
+                        Some(vec![String::from("tracks")]),
+                    )
+                    .await?;
+
+                let top_tracks = search.included.ok_or(TidalError::ApiError {
+                    api: "search".to_string(),
+                    cause: "relationships missing".to_string(),
+                })?;
+
+                let Some(IncludedInner::Tracks(top_track)) = top_tracks.iter().find(|i| -> bool {
+                    match i {
+                        IncludedInner::Tracks(t) => {
+                            let Some(attrs) = t.attributes.clone() else {
+                                return false;
+                            };
+                            attrs.title == resource.title
+                        }
+                        _ => false,
+                    }
+                }) else {
+                    error!("no track results");
+                    continue;
+                };
+
+                top_track.id.clone()
+            }
+        };
+
+        sleep(Duration::from_millis(200));
+        ids.push(id.to_string())
+    }
+
+    Ok(ids)
 }

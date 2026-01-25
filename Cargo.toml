@@ -30,6 +30,6 @@ time = "0.3.36"
 ordermap = "0.5.8"
 url = "2.5.8"
 oauth2 = "5.0.0"
-barnacle =  { git = "https://github.com/khreezy/barnacle.git" }
+prawn =  { version = "0.0.3" }
 [dev-dependencies]
 tokio-test = "0.4"

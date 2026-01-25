@@ -307,24 +307,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "barnacle"
-version = "0.0.1"
-source = "git+https://github.com/khreezy/barnacle.git#0f90a2bada966536966d3721fe2571c720c7f183"
-dependencies = [
- "async-trait",
- "chrono",
- "oauth2",
- "reqwest 0.12.9",
- "reqwest-middleware",
- "serde",
- "serde_json",
- "serde_path_to_error",
- "serde_repr",
- "url",
- "uuid",
-]
-
-[[package]]
 name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1628,7 +1610,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "chrono",
  "getrandom",
  "http 1.4.0",
@@ -1831,6 +1813,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77957b295656769bb8ad2b6a6b09d897d94f05c41b069aede1fcdaa675eaea04"
 dependencies = [
  "zerocopy",
+]
+
+[[package]]
+name = "prawn"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddba9148aa99723d58298d77d82b45a5717d5c344d01bea500e8c699fc121e5f"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "oauth2",
+ "reqwest 0.12.9",
+ "reqwest-middleware",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "serde_repr",
+ "url",
+ "uuid",
 ]
 
 [[package]]
@@ -2669,7 +2670,6 @@ version = "0.1.0"
 dependencies = [
  "async-std",
  "axum",
- "barnacle",
  "chrono",
  "clap",
  "env_logger",
@@ -2678,6 +2678,7 @@ dependencies = [
  "oauth2",
  "ordermap",
  "poise",
+ "prawn",
  "refinery",
  "regex",
  "reqwest 0.12.9",
@@ -3465,7 +3466,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
