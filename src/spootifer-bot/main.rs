@@ -11,10 +11,10 @@ use async_std::task;
 use axum::extract::Query;
 use axum::routing::get;
 use axum::{Router, extract::Form, extract::State};
-use barnacle::client::TidalClient;
 use clap::Parser;
 use http::StatusCode;
 use log::{error, info};
+use prawn::client::TidalClient;
 use rspotify::{AuthCodeSpotify, ClientCredsSpotify, Credentials};
 use rusqlite::Connection;
 use serde::Deserialize;
@@ -58,6 +58,11 @@ async fn main() {
         Credentials::from_env().unwrap_or_else(|| panic!("Spotify credentials not set!"));
 
     let spotify_client: ClientCredsSpotify = ClientCredsSpotify::new(credentials);
+
+    spotify_client
+        .request_token()
+        .await
+        .expect("unable to fetch spotify token");
 
     let tidal_client = match tidal::init_tidal_with_secret().await {
         Ok(c) => c,

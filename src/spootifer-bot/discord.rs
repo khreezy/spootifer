@@ -5,20 +5,20 @@ use crate::db::{
     update_user_guild_playlist_id,
 };
 use crate::spotify::{
-    contains_spotify_link, extract_ids, get_album_images, get_track_ids, init_spotify,
+    IdType, contains_spotify_link, get_album_images, get_track_ids, init_spotify,
     init_spotify_from_token,
 };
 use crate::tidal::{contains_tidal_link, init_tidal};
 use crate::{spotify, tidal};
 use async_std::task;
-use barnacle::apis::Api;
-use barnacle::client::{TidalClient, Token};
-use barnacle::models::{
+use chrono::DateTime;
+use log::{error, info};
+use prawn::apis::Api;
+use prawn::client::{TidalClient, Token};
+use prawn::models::{
     self, PlaylistItemsRelationshipAddOperationPayload,
     PlaylistItemsRelationshipAddOperationPayloadData,
 };
-use chrono::DateTime;
-use log::{error, info};
 use rspotify::model::PlaylistId;
 use rspotify::prelude::*;
 use rspotify::{ClientCredsSpotify, scopes};
@@ -69,13 +69,51 @@ impl EventHandler for Handler {
         let content = new_message.content.clone();
 
         let has_spotify_link = contains_spotify_link(content.as_str());
-        let has_tidal_link = contains_tidal_link(content);
+        let has_tidal_link = contains_tidal_link(content.clone());
+
+        let mut tidal_ids: Vec<String> = vec![];
+        let mut spotify_ids = vec![];
 
         if has_spotify_link {
-            services.push("spotify")
-        }
-        if has_tidal_link {
+            services.push("spotify");
+            spotify_ids = spotify::extract_ids(content.clone().as_str());
+            let spotify_resources =
+                match spotify::get_spotify_resources(&self.spotify_client, spotify_ids.clone())
+                    .await
+                {
+                    Ok(s) => s,
+                    Err(e) => {
+                        error!("failed to get spotify_resources: {}", e);
+                        vec![]
+                    }
+                };
+
+            let mut tidal_ids_for_spotify_tracks =
+                match tidal::get_tidal_ids_from_spotify_resources(
+                    self.tidal_client.clone(),
+                    &spotify_resources,
+                )
+                .await
+                {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error!("failed to get tidal ids: {}", e);
+                        vec![]
+                    }
+                };
+
+            tidal_ids.append(&mut tidal_ids_for_spotify_tracks);
             services.push("tidal")
+        }
+
+        if has_tidal_link {
+            if !services.contains(&"tidal") {
+                services.push("tidal")
+            }
+
+            let mut message_tidal_ids = tidal::extract_ids(content.clone().as_str());
+
+            tidal_ids.append(&mut message_tidal_ids);
         }
 
         info!("got message containing {:?} link", services);
@@ -84,12 +122,12 @@ impl EventHandler for Handler {
             match service {
                 "spotify" => {
                     self.clone()
-                        .handle_spotify_links(&ctx, new_message.clone())
+                        .handle_spotify_links(&ctx, new_message.clone(), spotify_ids.clone())
                         .await
                 }
                 "tidal" => {
                     self.clone()
-                        .handle_tidal_links(&ctx, new_message.clone())
+                        .handle_tidal_links(&ctx, new_message.clone(), tidal_ids.clone())
                         .await
                 }
                 _ => (),
@@ -106,7 +144,12 @@ impl EventHandler for Handler {
 }
 
 impl Handler {
-    async fn handle_tidal_links(&self, _: &serenity::all::Context, new_message: Message) {
+    async fn handle_tidal_links(
+        &self,
+        _: &serenity::all::Context,
+        new_message: Message,
+        tidal_ids: Vec<String>,
+    ) {
         let guild_id = match new_message.guild_id {
             Some(id) => id,
             None => {
@@ -126,8 +169,6 @@ impl Handler {
                 return;
             }
         };
-
-        let tidal_ids = tidal::extract_ids(&new_message.content);
 
         let track_ids = match tidal::get_track_ids(&self.tidal_client, &tidal_ids).await {
             Ok(t) => t,
@@ -220,7 +261,12 @@ impl Handler {
         }
     }
 
-    async fn handle_spotify_links(self, ctx: &serenity::all::Context, new_message: Message) {
+    async fn handle_spotify_links(
+        self,
+        ctx: &serenity::all::Context,
+        new_message: Message,
+        spotify_ids: Vec<IdType>,
+    ) {
         let guild_id = match new_message.guild_id {
             Some(id) => id,
             None => {
@@ -240,13 +286,6 @@ impl Handler {
                 return;
             }
         };
-
-        let spotify_ids = extract_ids(&new_message.content.to_string());
-
-        self.spotify_client
-            .request_token()
-            .await
-            .expect("unable to fetch spotify token");
 
         let track_ids = get_track_ids(&self.spotify_client, &spotify_ids).await;
 
@@ -481,7 +520,7 @@ pub(crate) async fn authorize_tidal<'a>(ctx: CommandCtx<'_>) -> Result<()> {
 
     _ = match create_auth_request(
         &ctx.data().conn,
-        state,
+        state.into_secret(),
         discord_user_id,
         Some(String::from(pkce_code.as_str())),
         Some(String::from(pkce_verifier.into_secret().as_str())),

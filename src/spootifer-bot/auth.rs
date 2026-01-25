@@ -3,8 +3,8 @@ use crate::{
     spotify::init_spotify,
     tidal::init_tidal,
 };
-use barnacle::client::TidalClient;
 use chrono::Utc;
+use prawn::client::TidalClient;
 use rspotify::clients::BaseClient;
 use rspotify::{AuthCodeSpotify, ClientError, prelude::OAuthClient};
 use serde::ser::StdError;
@@ -125,7 +125,7 @@ pub trait IntoOAuthToken {
     fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken>;
 }
 
-impl IntoOAuthToken for barnacle::client::Token {
+impl IntoOAuthToken for prawn::client::Token {
     fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken> {
         Some(OAuthToken {
             user_id,
