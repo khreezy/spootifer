@@ -9,8 +9,6 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
-use crate::tidal;
-
 const SPOTIFY_DOMAIN: &str = "open.spotify.com";
 const SPOTIFY_SHORTENED_DOMAIN: &str = "spotify.link";
 const MAX_REDIRECT_DEPTH: u32 = 5;
@@ -281,10 +279,9 @@ pub(crate) async fn get_album_images(
     images
 }
 
-pub struct SpotifyResource {
-    pub title: String,
-    pub artist: String,
-    pub tidal_resource_type: tidal::TidalResourceType,
+pub enum SpotifyResource {
+    Album(FullAlbum),
+    Track(FullTrack),
 }
 
 pub async fn get_spotify_resources(
@@ -296,27 +293,13 @@ pub async fn get_spotify_resources(
         let resource = match id {
             IdType::Album(i) => {
                 let album = client.album(AlbumId::from_id(i)?, None).await?;
-                let Some(artist) = album.artists.first() else {
-                    return Err(SpotifyErr.into());
-                };
 
-                SpotifyResource {
-                    title: album.name,
-                    artist: artist.name.clone(),
-                    tidal_resource_type: tidal::TidalResourceType::Album,
-                }
+                SpotifyResource::Album(album)
             }
             IdType::Track(i) => {
                 let track = client.track(TrackId::from_id(i)?, None).await?;
-                let Some(artist) = track.artists.first() else {
-                    return Err(SpotifyErr.into());
-                };
 
-                SpotifyResource {
-                    title: track.name,
-                    artist: artist.name.clone(),
-                    tidal_resource_type: tidal::TidalResourceType::Track,
-                }
+                SpotifyResource::Track(track)
             }
         };
 
