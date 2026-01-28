@@ -305,6 +305,13 @@ fn album_matches(maybe_album: &&IncludedInner, track: &FullTrack) -> bool {
     })
 }
 
+fn normalize_track_name(name: String) -> String {
+    name.replace("-", "")
+        .replace("(", "")
+        .replace(")", "")
+        .replace("  ", " ")
+}
+
 fn track_matches(tidal_track: TracksAttributes, spotify_track: &FullTrack) -> bool {
     info!(
         "tidal track name {} spotify track name {}",
@@ -312,6 +319,8 @@ fn track_matches(tidal_track: TracksAttributes, spotify_track: &FullTrack) -> bo
     );
     let maybe_spotify_isrc = spotify_track.external_ids.get(&"isrc".to_string());
     let maybe_tidal_duration = iso8601::duration(tidal_track.duration.as_str());
+    let normalize_tidal_track_name = normalize_track_name(tidal_track.title);
+    let normalized_spotify_track_name = normalize_track_name(spotify_track.name.clone());
     (maybe_spotify_isrc.is_some() && *maybe_spotify_isrc.unwrap() == tidal_track.isrc)
         || (maybe_tidal_duration.is_ok_and(|d| -> bool {
             spotify_track
@@ -321,7 +330,7 @@ fn track_matches(tidal_track: TracksAttributes, spotify_track: &FullTrack) -> bo
                 .unwrap_or(1000)
                 .abs()
                 < 2
-        }) && tidal_track.title == spotify_track.name)
+        }) && normalize_tidal_track_name == normalized_spotify_track_name)
 }
 
 fn track_matches_in_list(maybe_track: &&IncludedInner, spotify_track: &FullTrack) -> bool {
