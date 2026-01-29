@@ -351,7 +351,7 @@ async fn find_track_in_album(client: &Arc<TidalClient>, track: &FullTrack) -> Op
 
     let search_string = album_name + " " + artist_name.as_str();
 
-    let Ok(search) = client
+    let search = match client
         .search_results_api()
         .get_search_result_albums(
             search_string.as_str(),
@@ -361,9 +361,12 @@ async fn find_track_in_album(client: &Arc<TidalClient>, track: &FullTrack) -> Op
             Some(vec![String::from("albums")]),
         )
         .await
-    else {
-        error!("failed to do search");
-        return None;
+    {
+        Ok(s) => s,
+        Err(e) => {
+            error!("failed to do search: {}", e);
+            return None;
+        }
     };
 
     let albums = search.included?;
@@ -413,7 +416,7 @@ async fn find_track(client: &Arc<TidalClient>, track: &FullTrack) -> Option<Stri
 
     let search_string = track_name + " " + artist_name.as_str();
 
-    let Ok(search) = client
+    let search = match client
         .search_results_api()
         .get_search_result_tracks(
             search_string.as_str(),
@@ -423,9 +426,12 @@ async fn find_track(client: &Arc<TidalClient>, track: &FullTrack) -> Option<Stri
             Some(vec![String::from("tracks")]),
         )
         .await
-    else {
-        error!("failed to do search");
-        return None;
+    {
+        Ok(s) => s,
+        Err(e) => {
+            error!("failed to do search: {}", e);
+            return None;
+        }
     };
 
     let search_included = search.included?;
