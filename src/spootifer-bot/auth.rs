@@ -145,7 +145,7 @@ impl IntoOAuthToken for rspotify::Token {
     fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken> {
         Some(OAuthToken {
             user_id,
-            refresh_token: self.refresh_token.clone()?,
+            refresh_token: self.refresh_token.clone(),
             access_token: self.access_token.clone(),
             expiry_time: self.expires_at?.to_string(),
             token_type: String::from("Bearer"),

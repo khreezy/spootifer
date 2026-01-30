@@ -8,7 +8,7 @@ use crate::spotify::{
     IdType, contains_spotify_link, get_album_images, get_track_ids, init_spotify,
     init_spotify_from_token,
 };
-use crate::tidal::{contains_tidal_link, init_tidal};
+use crate::tidal::{TidalResource, contains_tidal_link, init_tidal};
 use crate::{spotify, tidal};
 use async_std::task;
 use chrono::DateTime;
@@ -30,8 +30,6 @@ use serenity::prelude::*;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::{Arc, Mutex};
-use std::thread::sleep;
-use std::time::Duration;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -62,21 +60,24 @@ impl Error for DiscordError {}
 
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 
+#[derive(Clone)]
+enum ServiceResources {
+    Spotify(Vec<IdType>),
+    Tidal(Vec<TidalResource>),
+}
+
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, new_message: Message) {
-        let mut services = vec![];
         let content = new_message.content.clone();
 
         let has_spotify_link = contains_spotify_link(content.as_str());
         let has_tidal_link = contains_tidal_link(content.clone());
 
-        let mut tidal_ids: Vec<String> = vec![];
-        let mut spotify_ids = vec![];
+        let mut resources = vec![];
 
         if has_spotify_link {
-            services.push("spotify");
-            spotify_ids = spotify::extract_ids(content.clone().as_str());
+            let spotify_ids = spotify::extract_ids(content.clone().as_str());
             let spotify_resources =
                 match spotify::get_spotify_resources(&self.spotify_client, spotify_ids.clone())
                     .await
@@ -88,53 +89,46 @@ impl EventHandler for Handler {
                     }
                 };
 
-            let mut tidal_ids_for_spotify_tracks =
-                match tidal::get_tidal_ids_from_spotify_resources(
-                    self.tidal_client.clone(),
-                    &spotify_resources,
-                )
-                .await
-                {
-                    Ok(t) => t,
-                    Err(e) => {
-                        error!("failed to get tidal ids: {}", e);
-                        vec![]
-                    }
-                };
+            resources.push(ServiceResources::Spotify(spotify_ids));
 
-            tidal_ids.append(&mut tidal_ids_for_spotify_tracks);
-            services.push("tidal")
+            match tidal::get_tidal_ids_from_spotify_resources(
+                self.tidal_client.as_ref(),
+                self.spotify_client.as_ref(),
+                &spotify_resources,
+            )
+            .await
+            {
+                Ok(t) => resources.push(ServiceResources::Tidal(t)),
+                Err(e) => {
+                    error!("failed to get tidal ids: {}", e);
+                }
+            };
         }
 
         if has_tidal_link {
-            if !services.contains(&"tidal") {
-                services.push("tidal")
-            }
+            let message_tidal_ids = tidal::extract_ids(content.clone().as_str());
 
-            let mut message_tidal_ids = tidal::extract_ids(content.clone().as_str());
-
-            tidal_ids.append(&mut message_tidal_ids);
+            resources.push(ServiceResources::Tidal(message_tidal_ids));
         }
 
-        info!("got message containing {:?} link", services);
+        info!("processing {} resource sets", resources.len());
 
-        for service in services.clone() {
-            match service {
-                "spotify" => {
+        for resource_set in resources.clone() {
+            match resource_set {
+                ServiceResources::Spotify(spotify_ids) => {
                     self.clone()
                         .handle_spotify_links(&ctx, new_message.clone(), spotify_ids.clone())
                         .await
                 }
-                "tidal" => {
+                ServiceResources::Tidal(tidal_ids) => {
                     self.clone()
                         .handle_tidal_links(&ctx, new_message.clone(), tidal_ids.clone())
                         .await
                 }
-                _ => (),
             };
         }
 
-        if services.len() != 0 {
+        if resources.len() != 0 {
             let mills500 = std::time::Duration::from_millis(500);
             task::sleep(mills500).await;
             info!("acknowledging message");
@@ -148,7 +142,7 @@ impl Handler {
         &self,
         _: &serenity::all::Context,
         new_message: Message,
-        tidal_ids: Vec<String>,
+        tidal_ids: Vec<TidalResource>,
     ) {
         let guild_id = match new_message.guild_id {
             Some(id) => id,
@@ -217,6 +211,7 @@ impl Handler {
                 access_token: tidal_token.access_token,
                 refresh_token: tidal_token.refresh_token,
                 expiry: tidal_token.expiry_time,
+                scopes: None,
             };
 
             let tidal_client = match tidal::init_tidal_with_token(token) {
@@ -236,6 +231,7 @@ impl Handler {
             };
 
             for data in chunked_data.clone() {
+                info!("attempting to add chunk");
                 match tidal_client
                     .playlists_api()
                     .add_items_to_playlist(
@@ -256,7 +252,6 @@ impl Handler {
                         continue;
                     }
                 }
-                sleep(Duration::from_millis(200))
             }
         }
     }
@@ -329,7 +324,7 @@ impl Handler {
 
             let token = rspotify::Token {
                 access_token: spotify_token.access_token,
-                refresh_token: Some(spotify_token.refresh_token),
+                refresh_token: spotify_token.refresh_token,
                 expires_at: Some(expires_at),
                 expires_in: Default::default(),
                 scopes: scopes!("playlist-modify-public"),
