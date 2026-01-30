@@ -1835,9 +1835,9 @@ dependencies = [
 
 [[package]]
 name = "prawn"
-version = "0.0.3"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddba9148aa99723d58298d77d82b45a5717d5c344d01bea500e8c699fc121e5f"
+checksum = "b9237d485b91b633e715703e9a664cb5b80506a1bc5416386a5db5d68f396b55"
 dependencies = [
  "async-trait",
  "chrono",

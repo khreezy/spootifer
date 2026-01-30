@@ -19,7 +19,7 @@ pub struct User {
 #[derive(Clone)]
 pub struct OAuthToken {
     pub user_id: i64,
-    pub refresh_token: String,
+    pub refresh_token: Option<String>,
     pub access_token: String,
     pub expiry_time: String,
     pub token_type: String,

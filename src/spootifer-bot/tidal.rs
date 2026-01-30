@@ -1,16 +1,18 @@
+use crate::error;
 use crate::spotify::SpotifyResource;
-use crate::{error, tidal};
 use log::{info, warn};
 use prawn::apis::Api;
-use prawn::client::{OAuthConfig, TidalClient, TidalClientConfig, TidalClientError, Token};
-use prawn::models::{AlbumsResourceObject, IncludedInner, TracksAttributes};
+use prawn::client::{
+    OAuthConfig, RetryConfig, TidalClient, TidalClientConfig, TidalClientError, Token,
+};
+use prawn::models::{IncludedInner, TracksAttributes};
 use regex::Regex;
-use rspotify::model::FullTrack;
+use rspotify::ClientCredsSpotify;
+use rspotify::model::{FullAlbum, FullTrack};
+use rspotify::prelude::BaseClient;
 use std::env;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::sync::Arc;
-use std::thread::sleep;
 use std::time::Duration;
 
 static TIDAL_DOMAIN: &str = "tidal.com";
@@ -57,6 +59,7 @@ pub(crate) fn init_tidal() -> Result<TidalClient> {
             client_secret: None,
         },
         auth_token: None,
+        retry_config: Some(RetryConfig {}),
     };
 
     Ok(prawn::client::TidalClient::new(config)?)
@@ -75,6 +78,7 @@ pub(crate) async fn init_tidal_with_secret() -> Result<TidalClient> {
             client_secret: Some(client_secret),
         },
         auth_token: None,
+        retry_config: Some(RetryConfig {}),
     };
 
     let client = prawn::client::TidalClient::new(config)?;
@@ -98,6 +102,7 @@ pub(crate) fn init_tidal_with_token(token: Token) -> Result<TidalClient> {
             client_secret: None,
         },
         auth_token: Some(token),
+        retry_config: Some(RetryConfig {}),
     };
 
     Ok(prawn::client::TidalClient::new(config)?)
@@ -132,7 +137,7 @@ pub(crate) fn extract_playlist_id(link: String) -> Option<String> {
     Some(re.captures(link.as_str())?.get(1)?.as_str().to_string())
 }
 
-pub(crate) fn extract_ids(link: &str) -> Vec<String> {
+pub(crate) fn extract_ids(link: &str) -> Vec<TidalResource> {
     let re = match Regex::new(
         r"(((?:https?://tidal\.com/track/|https?://tidal\.com/album/)([a-zA-Z0-9]+)))/u",
     ) {
@@ -146,14 +151,14 @@ pub(crate) fn extract_ids(link: &str) -> Vec<String> {
     let matches = re.captures_iter(link);
 
     return matches
-        .filter_map(|m| -> Option<Vec<String>> {
+        .filter_map(|m| -> Option<Vec<TidalResource>> {
             if m.len() > 1 {
                 let link = m.get(1)?.as_str();
 
                 if is_album(link) {
-                    Some(vec![m.get(3)?.as_str().to_string()])
+                    Some(vec![TidalResource::Album(m.get(3)?.as_str().to_string())])
                 } else {
-                    Some(vec![m.get(3)?.as_str().to_string()])
+                    Some(vec![TidalResource::Track(m.get(3)?.as_str().to_string())])
                 }
             } else {
                 None
@@ -171,6 +176,7 @@ pub(crate) async fn get_album_track_ids(
     client: &TidalClient,
     album_id: String,
 ) -> Result<Vec<String>> {
+    info!("getting tracks for album {}", album_id);
     let mut track_ids: Vec<String> = vec![];
     let album_tracks = client
         .albums_api()
@@ -185,6 +191,10 @@ pub(crate) async fn get_album_track_ids(
         .into());
     };
 
+    info!(
+        "got back album with at least {} tracks",
+        album_tracks_data.len(),
+    );
     for track_id in album_tracks_data {
         track_ids.push(track_id.id)
     }
@@ -207,7 +217,6 @@ pub(crate) async fn get_album_track_ids(
             track_ids.push(track_id.id)
         }
 
-        sleep(Duration::from_millis(200));
         maybe_next = album_tracks.links.meta
     }
 
@@ -215,93 +224,145 @@ pub(crate) async fn get_album_track_ids(
 }
 pub(crate) async fn get_track_ids(
     client: &TidalClient,
-    tidal_ids: &Vec<String>,
+    tidal_ids: &Vec<TidalResource>,
 ) -> Result<Vec<String>> {
+    info!("resolving track ids for {} resources", tidal_ids.len());
     let mut track_ids = vec![];
 
-    for id in tidal_ids {
-        match &mut get_album_track_ids(client, id.clone()).await {
-            Ok(v) => track_ids.append(v),
-            Err(e) => {
-                error!("failed to fetch album ids: {}", e);
-                track_ids.push(id.clone())
-            }
+    for resource in tidal_ids {
+        match resource {
+            TidalResource::Album(id) => match &mut get_album_track_ids(client, id.clone()).await {
+                Ok(v) => track_ids.append(v),
+                Err(e) => {
+                    error!("failed to fetch album ids: {}", e);
+                    continue;
+                }
+            },
+            TidalResource::Track(id) => track_ids.push(id.clone()),
         }
     }
 
     Ok(track_ids)
 }
 
+#[derive(Clone)]
+pub enum TidalResource {
+    Album(String),
+    Track(String),
+}
+
 pub(crate) async fn get_tidal_ids_from_spotify_resources(
-    client: Arc<TidalClient>,
+    tidal_client: &TidalClient,
+    spotify_client: &ClientCredsSpotify,
     spotify_resources: &Vec<SpotifyResource>,
-) -> Result<Vec<String>> {
+) -> Result<Vec<TidalResource>> {
     let mut ids = vec![];
 
     for resource in spotify_resources {
-        let Some(id) = (match resource {
-            SpotifyResource::Album(album) => {
-                let Some(artist) = album.artists.first() else {
-                    continue;
-                };
-                let search_string = album.name.clone() + " " + artist.name.as_str();
-                let search = client
-                    .search_results_api()
-                    .get_search_result_albums(
-                        search_string.as_str(),
-                        None,
-                        None,
-                        None,
-                        Some(vec![String::from("albums")]),
-                    )
-                    .await?;
-
-                let top_albums = search.included.ok_or(TidalError::ApiError {
-                    api: "search".to_string(),
-                    cause: "relationships missing".to_string(),
-                })?;
-
-                let Some(IncludedInner::Albums(top_album)) = top_albums.iter().find(|i| -> bool {
-                    match i {
-                        IncludedInner::Albums(a) => {
-                            let Some(attrs) = a.attributes.clone() else {
-                                return false;
-                            };
-                            attrs.title == album.name
-                        }
-                        _ => false,
-                    }
-                }) else {
-                    error!("no album results");
-                    continue;
-                };
-
-                Some(top_album.id.clone())
-            }
-            SpotifyResource::Track(track) => match_track(&client, track).await,
+        let Some(resource) = (match resource {
+            SpotifyResource::Album(album) => match_album(tidal_client, album)
+                .await
+                .map_or(None, |id: String| -> Option<TidalResource> {
+                    Some(TidalResource::Album(id.clone()))
+                }),
+            SpotifyResource::Track(track) => match_track(tidal_client, spotify_client, &track)
+                .await
+                .map_or(None, |id: String| -> Option<TidalResource> {
+                    Some(TidalResource::Track(id.clone()))
+                }),
         }) else {
-            warn!("failed to match a tidal track");
+            warn!("failed to match a tidal resource");
             continue;
         };
 
-        sleep(Duration::from_millis(200));
-        ids.push(id.to_string())
+        ids.push(resource)
     }
 
     Ok(ids)
 }
 
-fn album_matches(maybe_album: &&IncludedInner, track: &FullTrack) -> bool {
+async fn match_album(tidal_client: &TidalClient, album: &FullAlbum) -> Option<String> {
+    let artist = match album.artists.first() {
+        Some(a) => a.name.as_str(),
+        None => "",
+    };
+
+    let search_string = album.name.clone() + " " + artist;
+
+    let maybe_matched_album = match_album_with_search(tidal_client, album, search_string).await;
+
+    if maybe_matched_album.is_some() {
+        return maybe_matched_album;
+    }
+
+    let search_string_no_artist = album.name.clone();
+
+    match_album_with_search(tidal_client, album, search_string_no_artist).await
+}
+
+async fn match_album_with_search(
+    tidal_client: &TidalClient,
+    album: &FullAlbum,
+    search_string: String,
+) -> Option<String> {
+    let search = match tidal_client
+        .search_results_api()
+        .get_search_result_albums(
+            search_string.as_str(),
+            Some("INCLUDE"),
+            None,
+            None,
+            Some(vec![String::from("albums")]),
+        )
+        .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            error!("failed to do album search: {}", e);
+            return None;
+        }
+    };
+
+    let Some(top_albums) = search.included else {
+        error!("relationships missing");
+        return None;
+    };
+
+    info!("{} album results", top_albums.len());
+
+    let Some(IncludedInner::Albums(top_album)) = top_albums
+        .iter()
+        .find(|i| -> bool { album_matches(i, album) })
+    else {
+        error!("no album matched search {}", search_string);
+        return None;
+    };
+
+    Some(top_album.id.clone())
+}
+
+fn album_matches(maybe_album: &&IncludedInner, full_spotify_album: &FullAlbum) -> bool {
     let IncludedInner::Albums(album) = maybe_album else {
         return false;
     };
 
     album.attributes.as_ref().is_some_and(|attrs| -> bool {
+        let upc_matches = full_spotify_album
+            .external_ids
+            .get("upc")
+            .is_some_and(|v| *v == attrs.barcode_id);
+        let ean_matches = full_spotify_album
+            .external_ids
+            .get("ean")
+            .is_some_and(|v| *v == attrs.barcode_id);
+
+        let barcode_matches = upc_matches || ean_matches;
+
         info!(
             "tidal name {} spotify name {}",
-            attrs.title, track.album.name,
+            attrs.title, full_spotify_album.name,
         );
-        attrs.title == track.album.name
+        barcode_matches || attrs.title == full_spotify_album.name
     })
 }
 
@@ -345,7 +406,11 @@ fn track_matches_in_list(maybe_track: &&IncludedInner, spotify_track: &FullTrack
     track_matches(*attrs, spotify_track)
 }
 
-async fn find_track_in_album(client: &Arc<TidalClient>, track: &FullTrack) -> Option<String> {
+async fn find_track_in_album(
+    client: &TidalClient,
+    spotify_client: &ClientCredsSpotify,
+    track: &FullTrack,
+) -> Option<String> {
     let album_name = track.album.name.clone();
     let artist_name = track.artists.first()?.name.clone();
 
@@ -355,7 +420,7 @@ async fn find_track_in_album(client: &Arc<TidalClient>, track: &FullTrack) -> Op
         .search_results_api()
         .get_search_result_albums(
             search_string.as_str(),
-            None,
+            Some("INCLUDE"),
             None,
             None,
             Some(vec![String::from("albums")]),
@@ -369,11 +434,26 @@ async fn find_track_in_album(client: &Arc<TidalClient>, track: &FullTrack) -> Op
         }
     };
 
+    let album_id = track.album.id.clone();
+
+    let full_album = if let Some(id) = album_id {
+        let album_resp = spotify_client.album(id, None).await;
+        match album_resp {
+            Ok(a) => a,
+            Err(e) => {
+                error!("failed to get spotify album: {}", e);
+                return None;
+            }
+        }
+    } else {
+        error!("album id not present");
+        return None;
+    };
+
     let albums = search.included?;
-    let track_ref = &track;
     let Some(IncludedInner::Albums(top_album)) = albums
         .iter()
-        .find(|a| -> bool { album_matches(a, track_ref) })
+        .find(|a| -> bool { album_matches(a, &full_album) })
     else {
         warn!("failed to match album");
         return None;
@@ -410,7 +490,7 @@ async fn find_track_in_album(client: &Arc<TidalClient>, track: &FullTrack) -> Op
     Some(matched_track.id.clone())
 }
 
-async fn find_track(client: &Arc<TidalClient>, track: &FullTrack) -> Option<String> {
+async fn find_track(client: &TidalClient, track: &FullTrack) -> Option<String> {
     let track_name = track.name.clone();
     let artist_name = track.artists.first()?.name.clone();
 
@@ -420,7 +500,7 @@ async fn find_track(client: &Arc<TidalClient>, track: &FullTrack) -> Option<Stri
         .search_results_api()
         .get_search_result_tracks(
             search_string.as_str(),
-            None,
+            Some("INCLUDE"),
             None,
             None,
             Some(vec![String::from("tracks")]),
@@ -448,8 +528,12 @@ async fn find_track(client: &Arc<TidalClient>, track: &FullTrack) -> Option<Stri
     Some(found_track.id.clone())
 }
 
-async fn match_track(client: &Arc<TidalClient>, track: &FullTrack) -> Option<String> {
-    let track_in_album = find_track_in_album(client, track).await;
+async fn match_track(
+    client: &TidalClient,
+    spotify_client: &ClientCredsSpotify,
+    track: &FullTrack,
+) -> Option<String> {
+    let track_in_album = find_track_in_album(client, spotify_client, track).await;
 
     if track_in_album.is_some() {
         return track_in_album;
