@@ -548,5 +548,8 @@ pub async fn extract_resources(
     _: &ClientCredsSpotify,
     msg: &str,
 ) -> Vec<ServiceResources> {
+    if !contains_tidal_link(msg.to_string()) {
+        return vec![];
+    }
     [ServiceResources::Tidal(extract_ids(msg))].to_vec()
 }
