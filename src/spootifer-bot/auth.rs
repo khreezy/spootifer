@@ -2,8 +2,10 @@ use crate::{
     db::{AuthRequest, OAuthToken},
     spotify::init_spotify,
     tidal::init_tidal,
+    youtube::init_youtube,
 };
 use chrono::Utc;
+use isopod::client::YoutubeClient;
 use prawn::client::TidalClient;
 use rspotify::clients::BaseClient;
 use rspotify::{AuthCodeSpotify, ClientError, prelude::OAuthClient};
@@ -141,6 +143,22 @@ impl IntoOAuthToken for prawn::client::Token {
     }
 }
 
+impl IntoOAuthToken for isopod::client::Token {
+    fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken> {
+        Some(OAuthToken {
+            user_id,
+            refresh_token: self.refresh_token.clone(),
+            access_token: self.access_token.clone(),
+            expiry_time: self.expiry.clone(),
+            token_type: String::from("Bearer"),
+            deleted_at: None,
+            created_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+            for_service: String::from("youtube"),
+        })
+    }
+}
+
 impl IntoOAuthToken for rspotify::Token {
     fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken> {
         Some(OAuthToken {
@@ -153,6 +171,25 @@ impl IntoOAuthToken for rspotify::Token {
             created_at: Utc::now().to_string(),
             updated_at: Utc::now().to_string(),
             for_service: "spotify".to_string(),
+        })
+    }
+}
+
+impl ExchangeToken for YoutubeClient {
+    async fn exchange_token(
+        _: AuthRequest,
+        code: String,
+        user_id: i64,
+    ) -> Result<OAuthToken, AuthError> {
+        let client = init_youtube()?;
+
+        let token = match client.exchange_code_for_token(code).await {
+            Ok(t) => t,
+            Err(e) => return Err(AuthError { msg: e.to_string() }),
+        };
+
+        token.into_oauth_token(user_id).ok_or(AuthError {
+            msg: String::from("failed to get oauth token from token"),
         })
     }
 }

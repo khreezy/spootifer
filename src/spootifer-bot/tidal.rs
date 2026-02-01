@@ -1,3 +1,4 @@
+use crate::discord::ServiceResources;
 use crate::error;
 use crate::spotify::SpotifyResource;
 use log::{info, warn};
@@ -139,7 +140,7 @@ pub(crate) fn extract_playlist_id(link: String) -> Option<String> {
 
 pub(crate) fn extract_ids(link: &str) -> Vec<TidalResource> {
     let re = match Regex::new(
-        r"(((?:https?://tidal\.com/track/|https?://tidal\.com/album/)([a-zA-Z0-9]+)))/u",
+        r"(((?:https://tidal\.com/track/|https://tidal\.com/album/)([a-zA-Z0-9]+)))/u",
     ) {
         Ok(re) => re,
         Err(e) => {
@@ -540,4 +541,12 @@ async fn match_track(
     }
 
     find_track(client, track).await
+}
+
+pub async fn extract_resources(
+    _: &TidalClient,
+    _: &ClientCredsSpotify,
+    msg: &str,
+) -> Vec<ServiceResources> {
+    [ServiceResources::Tidal(extract_ids(msg))].to_vec()
 }
