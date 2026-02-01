@@ -11,6 +11,7 @@ use crate::discord::ServiceResources;
 pub static DEFAULT_SCOPES: &'static [&'static str] = &["https://www.googleapis.com/auth/youtube"];
 
 pub static YOUTUBE_DOMAIN: &'static str = "youtube.com";
+pub static SHORT_YOUTUBE_DOMAIN: &'static str = "youtu.be";
 
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 
@@ -79,7 +80,7 @@ pub(crate) fn init_youtube_with_token(token: Token) -> Result<YoutubeClient> {
 }
 
 pub(crate) fn contains_youtube_link(link: String) -> bool {
-    return link.contains(YOUTUBE_DOMAIN);
+    return link.contains(YOUTUBE_DOMAIN) || link.contains(SHORT_YOUTUBE_DOMAIN);
 }
 
 pub(crate) fn extract_playlist_id(link: String) -> Option<String> {
@@ -114,7 +115,6 @@ pub(crate) fn extract_ids(link: &str) -> Vec<YoutubeResource> {
 
     return matches
         .filter_map(|m| -> Option<YoutubeResource> {
-            info!("got matches: {:?}", m);
             if let Some(desktop) = m.name("desktop") {
                 let Ok(link) = Url::parse(desktop.as_str()) else {
                     error!("{} was not a url", desktop.as_str());
@@ -138,5 +138,8 @@ pub(crate) fn extract_ids(link: &str) -> Vec<YoutubeResource> {
 }
 
 pub(crate) fn extract_resources(link: &str) -> Vec<ServiceResources> {
+    if !contains_youtube_link(link.to_string()) {
+        return vec![];
+    }
     vec![ServiceResources::Youtube(extract_ids(link))]
 }
