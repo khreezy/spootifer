@@ -1,5 +1,6 @@
 use log::error;
 use ordermap::OrderSet;
+use prawn::client::TidalClient;
 use regex::Regex;
 use rspotify::clients::BaseClient;
 use rspotify::model::{AlbumId, FullAlbum, FullTrack, Image, PlayableId, TrackId};
@@ -8,6 +9,9 @@ use std::env;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
+
+use crate::discord::ServiceResources;
+use crate::tidal;
 
 const SPOTIFY_DOMAIN: &str = "open.spotify.com";
 const SPOTIFY_SHORTENED_DOMAIN: &str = "spotify.link";
@@ -285,7 +289,7 @@ pub enum SpotifyResource {
 }
 
 pub async fn get_spotify_resources(
-    client: &Arc<ClientCredsSpotify>,
+    client: &ClientCredsSpotify,
     spotify_ids: Vec<IdType>,
 ) -> Result<Vec<SpotifyResource>> {
     let mut resources = vec![];
@@ -307,4 +311,42 @@ pub async fn get_spotify_resources(
     }
 
     Ok(resources)
+}
+
+pub(crate) async fn extract_resources(
+    spotify_client: &ClientCredsSpotify,
+    tidal_client: &TidalClient,
+    content: &str,
+) -> Vec<ServiceResources> {
+    if !contains_spotify_link(content) {
+        return vec![];
+    }
+
+    let spotify_ids = extract_ids(content);
+
+    let spotify_resources = match get_spotify_resources(spotify_client, spotify_ids.clone()).await {
+        Ok(s) => s,
+        Err(e) => {
+            error!("failed to get spotify_resources: {}", e);
+            return vec![];
+        }
+    };
+
+    match tidal::get_tidal_ids_from_spotify_resources(
+        tidal_client,
+        spotify_client,
+        &spotify_resources,
+    )
+    .await
+    {
+        Ok(t) => [
+            ServiceResources::Spotify(spotify_ids),
+            ServiceResources::Tidal(t),
+        ]
+        .to_vec(),
+        Err(e) => {
+            error!("failed to get tidal ids: {}", e);
+            [ServiceResources::Spotify(spotify_ids)].to_vec()
+        }
+    }
 }

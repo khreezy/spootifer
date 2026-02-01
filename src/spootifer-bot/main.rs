@@ -3,6 +3,7 @@ mod db;
 mod discord;
 mod spotify;
 mod tidal;
+mod youtube;
 
 use crate::auth::ExchangeToken;
 use crate::db::{get_auth_request_by_state, get_user_by_discord_user_id, insert_oauth_token};
@@ -13,6 +14,7 @@ use axum::routing::get;
 use axum::{Router, extract::Form, extract::State};
 use clap::Parser;
 use http::StatusCode;
+use isopod::client::YoutubeClient;
 use log::{error, info};
 use prawn::client::TidalClient;
 use rspotify::{AuthCodeSpotify, ClientCredsSpotify, Credentials};
@@ -89,6 +91,7 @@ async fn main() {
                 discord::register_playlist(),
                 discord::authorize_spotify(),
                 discord::authorize_tidal(),
+                discord::authorize_youtube(),
             ],
             ..Default::default()
         })
@@ -184,11 +187,13 @@ async fn complete_auth(
             );
         }
     };
+
     let maybe_oauth_token = match auth_request.for_service.as_str() {
         "spotify" => {
             AuthCodeSpotify::exchange_token(auth_request, code.code.clone(), user_id).await
         }
         "tidal" => TidalClient::exchange_token(auth_request, code.code.clone(), user_id).await,
+        "youtube" => YoutubeClient::exchange_token(auth_request, code.code.clone(), user_id).await,
         _ => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
