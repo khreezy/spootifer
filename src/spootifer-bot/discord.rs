@@ -113,20 +113,13 @@ impl EventHandler for Handler {
                 }
             };
         }
-
-        if resources.len() != 0 {
-            let mills500 = std::time::Duration::from_millis(500);
-            task::sleep(mills500).await;
-            info!("acknowledging message");
-            _ = new_message.react(&ctx, Unicode(String::from("✅"))).await;
-        }
     }
 }
 
 impl Handler {
     async fn handle_youtube_links(
         &self,
-        _: &serenity::all::Context,
+        ctx: &serenity::all::Context,
         new_message: Message,
         youtube_ids: Vec<YoutubeResource>,
     ) {
@@ -150,7 +143,7 @@ impl Handler {
             }
         };
 
-        for guild in user_guilds {
+        for guild in user_guilds.clone() {
             let user = match get_user_by_user_id(&self.conn, guild.user_id) {
                 Ok(u) => u,
                 Err(e) => {
@@ -245,10 +238,16 @@ impl Handler {
                 }
             }
         }
+        if user_guilds.len() != 0 {
+            let mills500 = std::time::Duration::from_millis(500);
+            task::sleep(mills500).await;
+            info!("acknowledging message");
+            _ = new_message.react(&ctx, Unicode(String::from("🏮"))).await;
+        }
     }
     async fn handle_tidal_links(
         &self,
-        _: &serenity::all::Context,
+        ctx: &serenity::all::Context,
         new_message: Message,
         tidal_ids: Vec<TidalResource>,
     ) {
@@ -289,7 +288,7 @@ impl Handler {
         let chunked_data: Vec<&[PlaylistItemsRelationshipAddOperationPayloadData]> =
             track_ids_payload_data.chunks(20).collect();
 
-        for guild in user_guilds {
+        for guild in user_guilds.clone() {
             let user = match get_user_by_user_id(&self.conn, guild.user_id) {
                 Ok(u) => u,
                 Err(e) => {
@@ -362,6 +361,13 @@ impl Handler {
                 }
             }
         }
+
+        if user_guilds.len() != 0 {
+            let mills500 = std::time::Duration::from_millis(500);
+            task::sleep(mills500).await;
+            info!("acknowledging message");
+            _ = new_message.react(&ctx, Unicode(String::from("🌊"))).await;
+        }
     }
 
     async fn handle_spotify_links(
@@ -392,7 +398,7 @@ impl Handler {
 
         let track_ids = get_track_ids(&self.spotify_client, &spotify_ids).await;
 
-        for guild in user_guilds {
+        for guild in user_guilds.clone() {
             let user = match get_user_by_user_id(&self.conn, guild.user_id) {
                 Ok(u) => u,
                 Err(e) => {
@@ -474,6 +480,13 @@ impl Handler {
                     continue;
                 }
             };
+        }
+
+        if user_guilds.len() != 0 {
+            let mills500 = std::time::Duration::from_millis(500);
+            task::sleep(mills500).await;
+            info!("acknowledging message");
+            _ = new_message.react(&ctx, Unicode(String::from("✅"))).await;
         }
 
         let album_image_urls = get_album_images(&self.spotify_client, &spotify_ids).await;
