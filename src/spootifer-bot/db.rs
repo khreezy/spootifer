@@ -29,6 +29,7 @@ pub struct OAuthToken {
     pub for_service: String,
 }
 
+#[derive(Clone)]
 pub struct UserGuild {
     pub user_id: i64,
     pub discord_guild_id: String,
