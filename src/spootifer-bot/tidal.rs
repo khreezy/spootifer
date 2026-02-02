@@ -1,15 +1,18 @@
 use crate::discord::ServiceResources;
 use crate::error;
-use crate::spotify::SpotifyResource;
+use crate::spotify::{IdType, SpotifyResource};
 use log::{info, warn};
 use prawn::apis::Api;
 use prawn::client::{
     OAuthConfig, RetryConfig, TidalClient, TidalClientConfig, TidalClientError, Token,
 };
-use prawn::models::{IncludedInner, TracksAttributes};
+use prawn::models::{
+    AlbumsAttributes, AlbumsResourceObject, AlbumsSingleResourceDataDocument, IncludedInner,
+    TracksAttributes, TracksSingleResourceDataDocument,
+};
 use regex::Regex;
 use rspotify::ClientCredsSpotify;
-use rspotify::model::{FullAlbum, FullTrack};
+use rspotify::model::{FullAlbum, FullTrack, Id, SimplifiedAlbum};
 use rspotify::prelude::BaseClient;
 use std::env;
 use std::error::Error;
@@ -331,10 +334,16 @@ async fn match_album_with_search(
 
     info!("{} album results", top_albums.len());
 
-    let Some(IncludedInner::Albums(top_album)) = top_albums
-        .iter()
-        .find(|i| -> bool { album_matches(i, album) })
-    else {
+    let Some(IncludedInner::Albums(top_album)) = top_albums.iter().find(|i| -> bool {
+        let IncludedInner::Albums(tidal_album) = i else {
+            return false;
+        };
+
+        let Some(attrs) = tidal_album.attributes.clone() else {
+            return false;
+        };
+        album_matches(attrs.as_ref(), album)
+    }) else {
         error!("no album matched search {}", search_string);
         return None;
     };
@@ -342,29 +351,23 @@ async fn match_album_with_search(
     Some(top_album.id.clone())
 }
 
-fn album_matches(maybe_album: &&IncludedInner, full_spotify_album: &FullAlbum) -> bool {
-    let IncludedInner::Albums(album) = maybe_album else {
-        return false;
-    };
+fn album_matches(attrs: &AlbumsAttributes, full_spotify_album: &FullAlbum) -> bool {
+    let upc_matches = full_spotify_album
+        .external_ids
+        .get("upc")
+        .is_some_and(|v| *v == attrs.barcode_id);
+    let ean_matches = full_spotify_album
+        .external_ids
+        .get("ean")
+        .is_some_and(|v| *v == attrs.barcode_id);
 
-    album.attributes.as_ref().is_some_and(|attrs| -> bool {
-        let upc_matches = full_spotify_album
-            .external_ids
-            .get("upc")
-            .is_some_and(|v| *v == attrs.barcode_id);
-        let ean_matches = full_spotify_album
-            .external_ids
-            .get("ean")
-            .is_some_and(|v| *v == attrs.barcode_id);
+    let barcode_matches = upc_matches || ean_matches;
 
-        let barcode_matches = upc_matches || ean_matches;
-
-        info!(
-            "tidal name {} spotify name {}",
-            attrs.title, full_spotify_album.name,
-        );
-        barcode_matches || attrs.title == full_spotify_album.name
-    })
+    info!(
+        "tidal name {} spotify name {}",
+        attrs.title, full_spotify_album.name,
+    );
+    barcode_matches || attrs.title == full_spotify_album.name
 }
 
 fn normalize_track_name(name: String) -> String {
@@ -374,14 +377,14 @@ fn normalize_track_name(name: String) -> String {
         .replace("  ", " ")
 }
 
-fn track_matches(tidal_track: TracksAttributes, spotify_track: &FullTrack) -> bool {
+fn track_matches(tidal_track: &TracksAttributes, spotify_track: &FullTrack) -> bool {
     info!(
         "tidal track name {} spotify track name {}",
         tidal_track.title, spotify_track.name
     );
     let maybe_spotify_isrc = spotify_track.external_ids.get(&"isrc".to_string());
     let maybe_tidal_duration = iso8601::duration(tidal_track.duration.as_str());
-    let normalize_tidal_track_name = normalize_track_name(tidal_track.title);
+    let normalize_tidal_track_name = normalize_track_name(tidal_track.title.clone());
     let normalized_spotify_track_name = normalize_track_name(spotify_track.name.clone());
     (maybe_spotify_isrc.is_some() && *maybe_spotify_isrc.unwrap() == tidal_track.isrc)
         || (maybe_tidal_duration.is_ok_and(|d| -> bool {
@@ -404,7 +407,7 @@ fn track_matches_in_list(maybe_track: &&IncludedInner, spotify_track: &FullTrack
         return false;
     };
 
-    track_matches(*attrs, spotify_track)
+    track_matches(attrs.as_ref(), spotify_track)
 }
 
 async fn find_track_in_album(
@@ -452,10 +455,16 @@ async fn find_track_in_album(
     };
 
     let albums = search.included?;
-    let Some(IncludedInner::Albums(top_album)) = albums
-        .iter()
-        .find(|a| -> bool { album_matches(a, &full_album) })
-    else {
+    let Some(IncludedInner::Albums(top_album)) = albums.iter().find(|a| -> bool {
+        let IncludedInner::Albums(album) = a else {
+            return false;
+        };
+
+        let Some(attrs) = album.attributes.clone() else {
+            return false;
+        };
+        album_matches(attrs.as_ref(), &full_album)
+    }) else {
         warn!("failed to match album");
         return None;
     };
@@ -543,13 +552,244 @@ async fn match_track(
     find_track(client, track).await
 }
 
+pub enum FullTidalResource {
+    Track(TracksSingleResourceDataDocument),
+    Album(AlbumsSingleResourceDataDocument),
+}
+
+pub async fn get_full_tidal_resources(
+    client: &TidalClient,
+    resources: Vec<TidalResource>,
+) -> Vec<FullTidalResource> {
+    let mut full_resources = vec![];
+    for resource in resources {
+        match resource {
+            TidalResource::Album(album_id) => {
+                match client
+                    .albums_api()
+                    .get_album(
+                        album_id.as_str(),
+                        None,
+                        Some(vec!["artists".to_string()]),
+                        None,
+                    )
+                    .await
+                {
+                    Ok(a) => full_resources.push(FullTidalResource::Album(a)),
+                    Err(e) => {
+                        error!("error fetching tidal album from api: {}", e);
+                        continue;
+                    }
+                }
+            }
+            TidalResource::Track(track_id) => {
+                match client
+                    .tracks_api()
+                    .get_track(
+                        track_id.as_str(),
+                        None,
+                        Some(vec!["artists".to_string()]),
+                        None,
+                    )
+                    .await
+                {
+                    Ok(t) => full_resources.push(FullTidalResource::Track(t)),
+                    Err(e) => {
+                        error!("error fetching tidal track from api: {}", e);
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+    full_resources
+}
+
+async fn match_spotify_album(
+    spotify_client: &ClientCredsSpotify,
+    tidal_album: AlbumsSingleResourceDataDocument,
+) -> Option<IdType> {
+    let album_attrs = tidal_album.data.attributes?;
+
+    let included = tidal_album.included?;
+    let IncludedInner::Artists(artist) = included.first()? else {
+        return None;
+    };
+
+    let query_string = format!(
+        "album={}&upc={}&artist={}",
+        album_attrs.title,
+        album_attrs.barcode_id,
+        artist.attributes.clone()?.name
+    );
+
+    let rspotify::model::SearchResult::Albums(albums_search) = (match spotify_client
+        .search(
+            query_string.as_str(),
+            rspotify::model::SearchType::Album,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            error!("failed to search for spotify album: {}", e);
+            return None;
+        }
+    }) else {
+        return None;
+    };
+
+    let mut full_albums = vec![];
+
+    for simplified_album in albums_search.items {
+        let Some(id) = simplified_album.id else {
+            continue;
+        };
+        let Ok(full_album) = spotify_client.album(id, None).await else {
+            continue;
+        };
+
+        full_albums.push(full_album)
+    }
+
+    let Some(top_result) = full_albums
+        .iter()
+        .find(|t| -> bool { album_matches(album_attrs.as_ref(), t) })
+    else {
+        warn!("no album found");
+        return None;
+    };
+
+    let id = top_result.id.to_string().replace("spotify:album:", "");
+    info!("matched album id: {}", id);
+
+    Some(IdType::Album(id))
+}
+
+async fn match_spotify_track(
+    spotify_client: &ClientCredsSpotify,
+    tidal_track: TracksSingleResourceDataDocument,
+) -> Option<IdType> {
+    let Some(track_attrs) = tidal_track.data.attributes else {
+        info!("no attrs on track");
+        return None;
+    };
+
+    let Some(included) = tidal_track.included else {
+        info!("no included data");
+        return None;
+    };
+    let IncludedInner::Artists(artist) = included.first()? else {
+        info!("no artist info");
+        return None;
+    };
+
+    let query_string = format!(
+        "album={}&isrc={}&artist={}",
+        track_attrs.title,
+        track_attrs.isrc,
+        artist.attributes.clone()?.name
+    );
+
+    let rspotify::model::SearchResult::Tracks(tracks_search) = (match spotify_client
+        .search(
+            query_string.as_str(),
+            rspotify::model::SearchType::Track,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            error!("failed to search for spotify album: {}", e);
+            return None;
+        }
+    }) else {
+        info!("was not a track search  result");
+        return None;
+    };
+
+    let Some(top_result) = tracks_search
+        .items
+        .iter()
+        .find(|t| -> bool { track_matches(track_attrs.as_ref(), t) })
+    else {
+        warn!("no album found");
+        return None;
+    };
+
+    let Some(id) = top_result.id.clone() else {
+        info!("no id on result");
+        return None;
+    };
+
+    let id = id.to_string().replace("spotify:track:", "");
+    info!("matched track id: {}", id);
+
+    Some(IdType::Track(id))
+}
+
+async fn match_spotify_resources(
+    tidal_client: &TidalClient,
+    spotify_client: &ClientCredsSpotify,
+    tidal_resources: Vec<FullTidalResource>,
+) -> Vec<IdType> {
+    let mut spotify_resource = vec![];
+    for resource in tidal_resources {
+        match resource {
+            FullTidalResource::Album(album) => {
+                let Some(matched_album) = match_spotify_album(spotify_client, album).await else {
+                    warn!("no album matched");
+                    continue;
+                };
+
+                spotify_resource.push(matched_album);
+            }
+            FullTidalResource::Track(track) => {
+                let Some(matched_track) = match_spotify_track(spotify_client, track).await else {
+                    warn!("no track matched");
+                    continue;
+                };
+
+                spotify_resource.push(matched_track)
+            }
+        }
+    }
+
+    spotify_resource
+}
+
 pub async fn extract_resources(
-    _: &TidalClient,
-    _: &ClientCredsSpotify,
+    tidal_client: &TidalClient,
+    spotify_client: &ClientCredsSpotify,
     msg: &str,
 ) -> Vec<ServiceResources> {
     if !contains_tidal_link(msg.to_string()) {
         return vec![];
     }
-    [ServiceResources::Tidal(extract_ids(msg))].to_vec()
+
+    let tidal_resources = extract_ids(msg);
+
+    let full_tidal_resources =
+        get_full_tidal_resources(tidal_client, tidal_resources.clone()).await;
+
+    let spotify_resources =
+        match_spotify_resources(tidal_client, spotify_client, full_tidal_resources).await;
+
+    if spotify_resources.len() > 0 {
+        return [
+            ServiceResources::Tidal(tidal_resources),
+            ServiceResources::Spotify(spotify_resources),
+        ]
+        .to_vec();
+    }
+
+    [ServiceResources::Tidal(tidal_resources)].to_vec()
 }
