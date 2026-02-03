@@ -40,21 +40,6 @@ pub struct UserGuild {
     pub for_service: String,
 }
 
-struct MessageLink {
-    link: String,
-    message_id: String,
-    guild_id: String,
-    channel_id: String,
-    acknowledged: bool,
-    link_type: String,
-}
-
-struct SpotifyTrackAdd {
-    spotify_track_id: String,
-    spotify_playlist_id: String,
-    message_link_id: String,
-}
-
 pub struct AuthRequest {
     pub discord_user_id: String,
     pub state: String,
@@ -81,10 +66,9 @@ impl Error for DbError {}
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-pub(crate) fn run_migrations<'a>(mut conn: Mutex<Connection>) -> Result<Report> {
-    let c = match conn.get_mut() {
-        Ok(c) => c,
-        Err(_) => return Err(DbError.into()),
+pub fn run_migrations(mut conn: Mutex<Connection>) -> Result<Report> {
+    let Ok(c) = conn.get_mut() else {
+        return Err(DbError.into());
     };
 
     match migrations::runner().run(c) {
@@ -93,14 +77,13 @@ pub(crate) fn run_migrations<'a>(mut conn: Mutex<Connection>) -> Result<Report> 
     }
 }
 
-pub(crate) fn get_user_guilds_by_guild_id_and_service(
+pub fn get_user_guilds_by_guild_id_and_service(
     conn: &Arc<Mutex<Connection>>,
     guild_id: &str,
     service: &str,
 ) -> Result<Vec<UserGuild>> {
-    let c = match conn.try_lock() {
-        Ok(c) => c,
-        Err(_) => return Err(DbError.into()),
+    let Ok(c) = conn.try_lock() else {
+        return Err(DbError.into());
     };
 
     let q = c.prepare("SELECT user_id, discord_guild_id, playlist_id, deleted_at, created_at, updated_at, for_service FROM user_guilds WHERE discord_guild_id = ? AND for_service = ?");
@@ -120,28 +103,23 @@ pub(crate) fn get_user_guilds_by_guild_id_and_service(
                 })
             },
         )?
-        .into_iter()
         .filter_map(|x: rusqlite::Result<UserGuild>| -> Option<UserGuild> {
-            match x {
-                Ok(u) => Some(u),
-                Err(_) => None,
-            }
+            x.map_or(None, |v| -> Option<UserGuild> { Some(v) })
         })
         .collect::<Vec<UserGuild>>();
 
     Ok(r)
 }
 
-pub(crate) fn update_user_guild_playlist_id(
+pub fn update_user_guild_playlist_id(
     conn: &Arc<Mutex<Connection>>,
     discord_guild_id: String,
     user_id: i64,
     playlist_id: String,
     service: &str,
 ) -> Result<()> {
-    let c = match conn.try_lock() {
-        Ok(c) => c,
-        Err(_) => return Err(DbError.into()),
+    let Ok(c) = conn.try_lock() else {
+        return Err(DbError.into());
     };
 
     let mut q = c.prepare(
@@ -157,18 +135,16 @@ pub(crate) fn update_user_guild_playlist_id(
     Err(DbError.into())
 }
 
-pub(crate) fn first_or_create_user_by_discord_user_id(
+pub fn first_or_create_user_by_discord_user_id(
     conn: &Arc<Mutex<Connection>>,
     discord_user_id: &str,
 ) -> Result<User> {
-    _ = match get_user_by_discord_user_id(conn, discord_user_id) {
-        Ok(u) => return Ok(u),
-        Err(_) => (),
-    };
+    if let Ok(u) = get_user_by_discord_user_id(conn, discord_user_id) {
+        return Ok(u);
+    }
 
-    let c = match conn.try_lock() {
-        Ok(c) => c,
-        Err(_) => return Err(DbError.into()),
+    let Ok(c) = conn.try_lock() else {
+        return Err(DbError.into());
     };
 
     let mut q =
@@ -186,52 +162,52 @@ pub(crate) fn first_or_create_user_by_discord_user_id(
     })
 }
 
-pub(crate) fn first_or_create_user_guild_by_user_id_and_guild_id(
+pub fn first_or_create_user_guild_by_user_id_and_guild_id(
     conn: &Arc<Mutex<Connection>>,
     guild_id: String,
     user_id: i64,
     service: &str,
 ) -> Result<UserGuild> {
-    _ = match get_user_guild_by_user_id_and_guild_id_and_service(
-        conn,
-        guild_id.clone(),
-        user_id,
-        service,
-    ) {
-        Ok(u) => return Ok(u),
-        Err(_) => (),
-    };
+    if let Ok(u) =
+        get_user_guild_by_user_id_and_guild_id_and_service(conn, guild_id.clone(), user_id, service)
+    {
+        return Ok(u);
+    }
 
-    let c = match conn.try_lock() {
-        Ok(c) => c,
-        Err(_) => return Err(DbError.into()),
+    let Ok(c) = conn.try_lock() else {
+        return Err(DbError.into());
     };
 
     let mut q = c.prepare("INSERT INTO user_guilds(user_id, discord_guild_id, created_at, updated_at, for_service) VALUES (?, ?, ?, ?, ?)")?;
 
     let now = Utc::now().to_string();
-    let _ = q.insert((user_id, guild_id.clone(), now.clone(), now.clone(), service))?;
+    let _ = q.insert((
+        user_id,
+        guild_id.to_string(),
+        now.clone(),
+        now.clone(),
+        service,
+    ))?;
 
     Ok(UserGuild {
         user_id,
-        discord_guild_id: guild_id.clone(),
+        discord_guild_id: guild_id,
         created_at: now.clone(),
-        updated_at: now.clone(),
+        updated_at: now,
         deleted_at: None,
         playlist_id: None,
         for_service: service.to_string(),
     })
 }
 
-pub(crate) fn get_user_guild_by_user_id_and_guild_id_and_service(
+pub fn get_user_guild_by_user_id_and_guild_id_and_service(
     conn: &Arc<Mutex<Connection>>,
     guild_id: String,
     user_id: i64,
     service: &str,
 ) -> Result<UserGuild> {
-    let c = match conn.try_lock() {
-        Ok(c) => c,
-        Err(_) => return Err(DbError.into()),
+    let Ok(c) = conn.try_lock() else {
+        return Err(DbError.into());
     };
 
     let mut q = c.prepare("SELECT user_id, discord_guild_id, playlist_id, deleted_at, created_at, updated_at, for_service FROM user_guilds WHERE discord_guild_id = ? AND user_id = ? AND for_service = ?")?;
@@ -257,10 +233,9 @@ pub(crate) fn get_user_guild_by_user_id_and_guild_id_and_service(
     }
 }
 
-pub(crate) fn get_user_by_user_id(conn: &Arc<Mutex<Connection>>, user_id: i64) -> Result<User> {
-    let c = match conn.try_lock() {
-        Ok(c) => c,
-        Err(_) => return Err(DbError.into()),
+pub fn get_user_by_user_id(conn: &Arc<Mutex<Connection>>, user_id: i64) -> Result<User> {
+    let Ok(c) = conn.try_lock() else {
+        return Err(DbError.into());
     };
 
     let q = c.prepare(
@@ -283,13 +258,12 @@ pub(crate) fn get_user_by_user_id(conn: &Arc<Mutex<Connection>>, user_id: i64) -
     }
 }
 
-pub(crate) fn get_user_by_discord_user_id(
+pub fn get_user_by_discord_user_id(
     conn: &Arc<Mutex<Connection>>,
     discord_user_id: &str,
 ) -> Result<User> {
-    let c = match conn.try_lock() {
-        Ok(c) => c,
-        Err(_) => return Err(DbError.into()),
+    let Ok(c) = conn.try_lock() else {
+        return Err(DbError.into());
     };
 
     let q = c.prepare("SELECT id, discord_user_id, deleted_at, created_at, updated_at FROM users WHERE discord_user_id = ?;");
@@ -310,7 +284,7 @@ pub(crate) fn get_user_by_discord_user_id(
     }
 }
 
-pub(crate) fn create_auth_request(
+pub fn create_auth_request(
     conn: &Arc<Mutex<Connection>>,
     state: String,
     discord_user_id: &str,
@@ -318,9 +292,8 @@ pub(crate) fn create_auth_request(
     pkce_code_verifier: Option<String>,
     for_service: &str,
 ) -> Result<AuthRequest> {
-    let c = match conn.try_lock() {
-        Ok(c) => c,
-        Err(_) => return Err(DbError.into()),
+    let Ok(c) = conn.try_lock() else {
+        return Err(DbError.into());
     };
 
     let mut q = c.prepare("INSERT INTO auth_requests(state, discord_user_id, pkce_code_challenge, pkce_code_verifier, for_service) VALUES(?,?,?,?,?)")?;
@@ -342,13 +315,12 @@ pub(crate) fn create_auth_request(
     })
 }
 
-pub(crate) fn get_auth_request_by_state(
+pub fn get_auth_request_by_state(
     conn: &Arc<Mutex<Connection>>,
     discord_user_id: &str,
 ) -> Result<AuthRequest> {
-    let c = match conn.try_lock() {
-        Ok(c) => c,
-        Err(_) => return Err(DbError.into()),
+    let Ok(c) = conn.try_lock() else {
+        return Err(DbError.into());
     };
 
     c.query_row_and_then(
@@ -366,14 +338,13 @@ pub(crate) fn get_auth_request_by_state(
     )
 }
 
-pub(crate) fn get_oauth_token_by_user_id_and_service(
+pub fn get_oauth_token_by_user_id_and_service(
     conn: &Arc<Mutex<Connection>>,
     user_id: i64,
     service: &str,
 ) -> Result<OAuthToken> {
-    let c = match conn.try_lock() {
-        Ok(c) => c,
-        Err(_) => return Err(DbError.into()),
+    let Ok(c) = conn.try_lock() else {
+        return Err(DbError.into());
     };
 
     let q = c.prepare("SELECT user_id, refresh_token, access_token, expiry_time, token_type, deleted_at, created_at, updated_at, for_service FROM oauth_tokens WHERE user_id = ? AND for_service = ?;");
@@ -398,7 +369,7 @@ pub(crate) fn get_oauth_token_by_user_id_and_service(
     }
 }
 
-pub(crate) fn insert_oauth_token(conn: &Transaction, token: OAuthToken) -> Result<i64> {
+pub fn insert_oauth_token(conn: &Transaction, token: OAuthToken) -> Result<i64> {
     let q = conn.prepare("INSERT INTO oauth_tokens (user_id, refresh_token, access_token, expiry_time, token_type, created_at, updated_at, for_service) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
 
     let r = q?.insert((

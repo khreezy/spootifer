@@ -11,7 +11,7 @@ use crate::tidal::{TidalResource, init_tidal};
 use crate::youtube::{self, YoutubeResource, init_youtube};
 use crate::{spotify, tidal};
 use async_std::task;
-use chrono::DateTime;
+use chrono::{DateTime, TimeDelta};
 use isopod::apis::Api as IsopodApi;
 use isopod::models::{PlaylistItem, PlaylistItemSnippet, ResourceId};
 use log::{error, info};
@@ -57,7 +57,7 @@ impl Display for DiscordError {
 
 type CommandError = Box<dyn Error + Send + Sync>;
 
-pub(crate) type CommandCtx<'a> = poise::Context<'a, Arc<Handler>, CommandError>;
+pub type CommandCtx<'a> = poise::Context<'a, Arc<Handler>, CommandError>;
 
 impl Error for DiscordError {}
 
@@ -77,14 +77,14 @@ impl EventHandler for Handler {
 
         let resources = [
             spotify::extract_resources(
-                &self.spotify_client.as_ref(),
+                self.spotify_client.as_ref(),
                 self.tidal_client.as_ref(),
                 content.as_str(),
             )
             .await,
             tidal::extract_resources(
-                &self.tidal_client.as_ref(),
-                &self.spotify_client.as_ref(),
+                self.tidal_client.as_ref(),
+                self.spotify_client.as_ref(),
                 content.as_str(),
             )
             .await,
@@ -99,36 +99,34 @@ impl EventHandler for Handler {
                 ServiceResources::Spotify(spotify_ids) => {
                     self.clone()
                         .handle_spotify_links(&ctx, new_message.clone(), spotify_ids.clone())
-                        .await
+                        .await;
                 }
                 ServiceResources::Tidal(tidal_ids) => {
                     self.clone()
                         .handle_tidal_links(&ctx, new_message.clone(), tidal_ids.clone())
-                        .await
+                        .await;
                 }
                 ServiceResources::Youtube(youtube_ids) => {
                     self.clone()
                         .handle_youtube_links(&ctx, new_message.clone(), youtube_ids.clone())
-                        .await
+                        .await;
                 }
-            };
+            }
         }
     }
 }
 
 impl Handler {
+    #[allow(clippy::too_many_lines)]
     async fn handle_youtube_links(
         &self,
         ctx: &serenity::all::Context,
         new_message: Message,
         youtube_ids: Vec<YoutubeResource>,
     ) {
-        let guild_id = match new_message.guild_id {
-            Some(id) => id,
-            None => {
-                error!("message not in a guild");
-                return;
-            }
+        let Some(guild_id) = new_message.guild_id else {
+            error!("message not in a guild");
+            return;
         };
 
         let user_guilds = match get_user_guilds_by_guild_id_and_service(
@@ -138,7 +136,7 @@ impl Handler {
         ) {
             Ok(u) => u,
             Err(e) => {
-                error!("error fetching guilds: {}", e);
+                error!("error fetching guilds: {e}");
                 return;
             }
         };
@@ -147,24 +145,21 @@ impl Handler {
             let user = match get_user_by_user_id(&self.conn, guild.user_id) {
                 Ok(u) => u,
                 Err(e) => {
-                    error!("Failed to get user: {:?}", e);
+                    error!("Failed to get user: {e}");
                     continue;
                 }
             };
 
-            let user_id = match user.id {
-                Some(i) => i,
-                None => {
-                    error!("user has not been created");
-                    continue;
-                }
+            let Some(user_id) = user.id else {
+                error!("user has not been created");
+                continue;
             };
 
             let youtube_token =
                 match get_oauth_token_by_user_id_and_service(&self.conn, user_id, "youtube") {
                     Ok(t) => t,
                     Err(e) => {
-                        error!("Failed to get tidal token: {:?}", e);
+                        error!("Failed to get tidal token: {e}");
                         continue;
                     }
                 };
@@ -179,17 +174,14 @@ impl Handler {
             let youtube_client = match youtube::init_youtube_with_token(token) {
                 Ok(t) => t,
                 Err(e) => {
-                    error!("error initializing tidal client: {}", e);
+                    error!("error initializing tidal client: {e}");
                     continue;
                 }
             };
 
-            let p = match guild.playlist_id {
-                Some(i) => i,
-                None => {
-                    error!("playlist id not present");
-                    continue;
-                }
+            let Some(p) = guild.playlist_id else {
+                error!("playlist id not present");
+                continue;
             };
 
             for YoutubeResource::Video(id) in youtube_ids.clone() {
@@ -233,30 +225,27 @@ impl Handler {
                             p.clone(),
                             e
                         );
-                        continue;
                     }
                 }
             }
         }
-        if user_guilds.len() != 0 {
+        if !user_guilds.is_empty() {
             let mills500 = std::time::Duration::from_millis(500);
             task::sleep(mills500).await;
             info!("acknowledging message");
             _ = new_message.react(&ctx, Unicode(String::from("🏮"))).await;
         }
     }
+    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     async fn handle_tidal_links(
         &self,
         ctx: &serenity::all::Context,
         new_message: Message,
         tidal_ids: Vec<TidalResource>,
     ) {
-        let guild_id = match new_message.guild_id {
-            Some(id) => id,
-            None => {
-                error!("message not in a guild");
-                return;
-            }
+        let Some(guild_id) = new_message.guild_id else {
+            error!("message not in a guild");
+            return;
         };
 
         let user_guilds = match get_user_guilds_by_guild_id_and_service(
@@ -266,7 +255,7 @@ impl Handler {
         ) {
             Ok(u) => u,
             Err(e) => {
-                error!("error fetching guilds: {}", e);
+                error!("error fetching guilds: {e}");
                 return;
             }
         };
@@ -274,7 +263,7 @@ impl Handler {
         let track_ids = match tidal::get_track_ids(&self.tidal_client, &tidal_ids).await {
             Ok(t) => t,
             Err(e) => {
-                error!("error fetching track ids: {}", e);
+                error!("error fetching track ids: {e}");
                 return;
             }
         };
@@ -292,24 +281,21 @@ impl Handler {
             let user = match get_user_by_user_id(&self.conn, guild.user_id) {
                 Ok(u) => u,
                 Err(e) => {
-                    error!("Failed to get user: {:?}", e);
+                    error!("Failed to get user: {e}");
                     continue;
                 }
             };
 
-            let user_id = match user.id {
-                Some(i) => i,
-                None => {
-                    error!("user has not been created");
-                    continue;
-                }
+            let Some(user_id) = user.id else {
+                error!("user has not been created");
+                continue;
             };
 
             let tidal_token =
                 match get_oauth_token_by_user_id_and_service(&self.conn, user_id, "tidal") {
                     Ok(t) => t,
                     Err(e) => {
-                        error!("Failed to get tidal token: {:?}", e);
+                        error!("Failed to get tidal token: {e}");
                         continue;
                     }
                 };
@@ -324,17 +310,14 @@ impl Handler {
             let tidal_client = match tidal::init_tidal_with_token(token) {
                 Ok(t) => t,
                 Err(e) => {
-                    error!("error initializing tidal client: {}", e);
+                    error!("error initializing tidal client: {e}");
                     continue;
                 }
             };
 
-            let p = match guild.playlist_id {
-                Some(i) => i,
-                None => {
-                    error!("playlist id not present");
-                    continue;
-                }
+            let Some(p) = guild.playlist_id else {
+                error!("playlist id not present");
+                continue;
             };
 
             for data in chunked_data.clone() {
@@ -351,18 +334,17 @@ impl Handler {
                     )
                     .await
                 {
-                    Ok(_) => {
-                        info!("added {} items to playlist", data.len())
+                    Ok(()) => {
+                        info!("added {} items to playlist", data.len());
                     }
                     Err(e) => {
-                        error!("failed to add tracks to playlist: {}", e);
-                        continue;
+                        error!("failed to add tracks to playlist: {e}");
                     }
                 }
             }
         }
 
-        if user_guilds.len() != 0 {
+        if !user_guilds.is_empty() {
             let mills500 = std::time::Duration::from_millis(500);
             task::sleep(mills500).await;
             info!("acknowledging message");
@@ -370,18 +352,16 @@ impl Handler {
         }
     }
 
+    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     async fn handle_spotify_links(
         self,
         ctx: &serenity::all::Context,
         new_message: Message,
         spotify_ids: Vec<IdType>,
     ) {
-        let guild_id = match new_message.guild_id {
-            Some(id) => id,
-            None => {
-                error!("message not in a guild");
-                return;
-            }
+        let Some(guild_id) = new_message.guild_id else {
+            error!("message not in a guild");
+            return;
         };
 
         let user_guilds = match get_user_guilds_by_guild_id_and_service(
@@ -391,7 +371,7 @@ impl Handler {
         ) {
             Ok(u) => u,
             Err(e) => {
-                error!("error fetching guilds: {}", e);
+                error!("error fetching guilds: {e}");
                 return;
             }
         };
@@ -402,24 +382,21 @@ impl Handler {
             let user = match get_user_by_user_id(&self.conn, guild.user_id) {
                 Ok(u) => u,
                 Err(e) => {
-                    error!("Failed to get user: {:?}", e);
+                    error!("Failed to get user: {e}");
                     continue;
                 }
             };
 
-            let user_id = match user.id {
-                Some(i) => i,
-                None => {
-                    error!("user has not been created");
-                    continue;
-                }
+            let Some(user_id) = user.id else {
+                error!("user has not been created");
+                continue;
             };
 
             let spotify_token =
                 match get_oauth_token_by_user_id_and_service(&self.conn, user_id, "spotify") {
                     Ok(t) => t,
                     Err(e) => {
-                        error!("Failed to get spotify token: {:?}", e);
+                        error!("Failed to get spotify token: {e}");
                         continue;
                     }
                 };
@@ -430,7 +407,7 @@ impl Handler {
                 match DateTime::parse_from_str(spotify_token.expiry_time.as_str(), "%+") {
                     Ok(t) => t.to_utc(),
                     Err(e) => {
-                        error!("Error parsing expires at time: {}", e);
+                        error!("Error parsing expires at time: {e}");
                         continue;
                     }
                 }
@@ -440,30 +417,27 @@ impl Handler {
                 access_token: spotify_token.access_token,
                 refresh_token: spotify_token.refresh_token,
                 expires_at: Some(expires_at),
-                expires_in: Default::default(),
+                expires_in: TimeDelta::default(),
                 scopes: scopes!("playlist-modify-public"),
             };
 
             let spotify_client = match init_spotify_from_token(token) {
                 Ok(c) => c,
                 Err(e) => {
-                    error!("error getting spotify client: {}", e);
+                    error!("error getting spotify client: {e}");
                     return;
                 }
             };
 
-            let p = match guild.playlist_id {
-                Some(i) => i,
-                None => {
-                    error!("playlist id not present");
-                    continue;
-                }
+            let Some(p) = guild.playlist_id else {
+                error!("playlist id not present");
+                continue;
             };
 
             let playlist_id = match PlaylistId::from_id(&p) {
                 Ok(id) => id,
                 Err(e) => {
-                    error!("Failed to get playlist id: {:?}", e);
+                    error!("Failed to get playlist id: {e}");
                     continue;
                 }
             };
@@ -476,13 +450,12 @@ impl Handler {
                     info!("Added tracks to playlist");
                 }
                 Err(e) => {
-                    error!("Failed to add tracks to playlist: {:?}", e);
-                    continue;
+                    error!("Failed to add tracks to playlist: {e}");
                 }
-            };
+            }
         }
 
-        if user_guilds.len() != 0 {
+        if !user_guilds.is_empty() {
             let mills500 = std::time::Duration::from_millis(500);
             task::sleep(mills500).await;
             info!("acknowledging message");
@@ -501,7 +474,7 @@ impl Handler {
 }
 
 #[poise::command(slash_command)]
-pub(crate) async fn authorize_youtube<'a>(ctx: CommandCtx<'_>) -> Result<()> {
+pub async fn authorize_youtube(ctx: CommandCtx<'_>) -> Result<()> {
     let discord_user_str = ctx.author().id.to_string();
     let discord_user_id = discord_user_str.as_str();
 
@@ -513,14 +486,13 @@ pub(crate) async fn authorize_youtube<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     let user = match first_or_create_user_by_discord_user_id(&ctx.data().conn, discord_user_id) {
         Ok(u) => u,
         Err(e) => {
-            error!("error creating user: {}", e);
+            error!("error creating user: {e}");
             return Err(DiscordError.into());
         }
     };
 
-    let user_id = match user.id {
-        Some(i) => i,
-        None => return Err(DiscordError.into()),
+    let Some(user_id) = user.id else {
+        return Err(DiscordError.into());
     };
 
     let _ = match first_or_create_user_guild_by_user_id_and_guild_id(
@@ -531,7 +503,7 @@ pub(crate) async fn authorize_youtube<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     ) {
         Ok(u) => u,
         Err(e) => {
-            error!("got error creating user guild: {}", e);
+            error!("got error creating user guild: {e}");
             return Err(DiscordError.into());
         }
     };
@@ -539,7 +511,7 @@ pub(crate) async fn authorize_youtube<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     let yt_client = match init_youtube() {
         Ok(u) => u,
         Err(e) => {
-            error!("got error initializing youtube client: {}", e);
+            error!("got error initializing youtube client: {e}");
             return Err(DiscordError.into());
         }
     };
@@ -556,7 +528,7 @@ pub(crate) async fn authorize_youtube<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     ) {
         Ok(u) => u,
         Err(e) => {
-            error!("error creating auth request: {}", e);
+            error!("error creating auth request: {e}");
             return Err(DiscordError.into());
         }
     };
@@ -578,7 +550,7 @@ pub(crate) async fn authorize_youtube<'a>(ctx: CommandCtx<'_>) -> Result<()> {
 }
 
 #[poise::command(slash_command)]
-pub(crate) async fn authorize_spotify<'a>(ctx: CommandCtx<'_>) -> Result<()> {
+pub async fn authorize_spotify(ctx: CommandCtx<'_>) -> Result<()> {
     let discord_user_str = ctx.author().id.to_string();
     let discord_user_id = discord_user_str.as_str();
 
@@ -590,14 +562,13 @@ pub(crate) async fn authorize_spotify<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     let user = match first_or_create_user_by_discord_user_id(&ctx.data().conn, discord_user_id) {
         Ok(u) => u,
         Err(e) => {
-            error!("error creating user: {}", e);
+            error!("error creating user: {e}");
             return Err(DiscordError.into());
         }
     };
 
-    let user_id = match user.id {
-        Some(i) => i,
-        None => return Err(DiscordError.into()),
+    let Some(user_id) = user.id else {
+        return Err(DiscordError.into());
     };
 
     let _ = match first_or_create_user_guild_by_user_id_and_guild_id(
@@ -608,7 +579,7 @@ pub(crate) async fn authorize_spotify<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     ) {
         Ok(u) => u,
         Err(e) => {
-            error!("got error creating user guild: {}", e);
+            error!("got error creating user guild: {e}");
             return Err(DiscordError.into());
         }
     };
@@ -616,7 +587,7 @@ pub(crate) async fn authorize_spotify<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     let mut spotify_client = match init_spotify() {
         Ok(u) => u,
         Err(e) => {
-            error!("got error initializing spotify client: {}", e);
+            error!("got error initializing spotify client: {e}");
             return Err(DiscordError.into());
         }
     };
@@ -626,7 +597,7 @@ pub(crate) async fn authorize_spotify<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     let auth_url = match spotify_client.get_authorize_url(false) {
         Ok(u) => u,
         Err(e) => {
-            error!("error getting auth url: {}", e);
+            error!("error getting auth url: {e}");
             return Err(DiscordError.into());
         }
     };
@@ -641,7 +612,7 @@ pub(crate) async fn authorize_spotify<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     ) {
         Ok(u) => u,
         Err(e) => {
-            error!("error creating auth request: {}", e);
+            error!("error creating auth request: {e}");
             return Err(DiscordError.into());
         }
     };
@@ -650,8 +621,7 @@ pub(crate) async fn authorize_spotify<'a>(ctx: CommandCtx<'_>) -> Result<()> {
         .send(
             poise::CreateReply::default()
                 .content(format!(
-                    "Please click this link to authorize with spotify.\n{}",
-                    auth_url
+                    "Please click this link to authorize with spotify.\n{auth_url}",
                 ))
                 .ephemeral(true),
         )
@@ -663,7 +633,7 @@ pub(crate) async fn authorize_spotify<'a>(ctx: CommandCtx<'_>) -> Result<()> {
 }
 
 #[poise::command(slash_command)]
-pub(crate) async fn authorize_tidal<'a>(ctx: CommandCtx<'_>) -> Result<()> {
+pub async fn authorize_tidal(ctx: CommandCtx<'_>) -> Result<()> {
     let discord_user_str = ctx.author().id.to_string();
     let discord_user_id = discord_user_str.as_str();
 
@@ -675,14 +645,13 @@ pub(crate) async fn authorize_tidal<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     let user = match first_or_create_user_by_discord_user_id(&ctx.data().conn, discord_user_id) {
         Ok(u) => u,
         Err(e) => {
-            error!("error creating user: {}", e);
+            error!("error creating user: {e}");
             return Err(DiscordError.into());
         }
     };
 
-    let user_id = match user.id {
-        Some(i) => i,
-        None => return Err(DiscordError.into()),
+    let Some(user_id) = user.id else {
+        return Err(DiscordError.into());
     };
 
     let _ = match first_or_create_user_guild_by_user_id_and_guild_id(
@@ -693,7 +662,7 @@ pub(crate) async fn authorize_tidal<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     ) {
         Ok(u) => u,
         Err(e) => {
-            error!("got error creating user guild: {}", e);
+            error!("got error creating user guild: {e}");
             return Err(DiscordError.into());
         }
     };
@@ -701,7 +670,7 @@ pub(crate) async fn authorize_tidal<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     let tidal_client = match init_tidal() {
         Ok(u) => u,
         Err(e) => {
-            error!("got error initializing tidal client: {}", e);
+            error!("got error initializing tidal client: {e}");
             return Err(DiscordError.into());
         }
     };
@@ -721,7 +690,7 @@ pub(crate) async fn authorize_tidal<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     ) {
         Ok(u) => u,
         Err(e) => {
-            error!("error creating auth request: {}", e);
+            error!("error creating auth request: {e}");
             return Err(DiscordError.into());
         }
     };
@@ -730,8 +699,7 @@ pub(crate) async fn authorize_tidal<'a>(ctx: CommandCtx<'_>) -> Result<()> {
         .send(
             poise::CreateReply::default()
                 .content(format!(
-                    "Please click this link to authorize with tidal.\n{}",
-                    auth_url
+                    "Please click this link to authorize with tidal.\n{auth_url}",
                 ))
                 .ephemeral(true),
         )
@@ -742,7 +710,7 @@ pub(crate) async fn authorize_tidal<'a>(ctx: CommandCtx<'_>) -> Result<()> {
     }
 }
 
-fn extract_playlist_id(service: &str, msg: String) -> Option<String> {
+fn extract_playlist_id(service: &str, msg: &str) -> Option<String> {
     match service {
         "spotify" => spotify::extract_playlist_id(msg),
         "tidal" => tidal::extract_playlist_id(msg),
@@ -752,43 +720,33 @@ fn extract_playlist_id(service: &str, msg: String) -> Option<String> {
 }
 
 #[poise::command(slash_command)]
-pub(crate) async fn register_playlist<'a>(
-    ctx: CommandCtx<'_>,
-    playlist_link: String,
-) -> Result<()> {
+pub async fn register_playlist(ctx: CommandCtx<'_>, playlist_link: String) -> Result<()> {
     let service = if spotify::contains_spotify_link(playlist_link.as_str()) {
         "spotify"
-    } else if tidal::contains_tidal_link(playlist_link.clone()) {
+    } else if tidal::contains_tidal_link(playlist_link.as_str()) {
         "tidal"
-    } else if youtube::contains_youtube_link(playlist_link.clone()) {
+    } else if youtube::contains_youtube_link(playlist_link.as_str()) {
         "youtube"
     } else {
         return Err(DiscordError.into());
     };
 
-    let playlist_id = match extract_playlist_id(service, playlist_link.clone()) {
-        Some(id) => id,
-        None => {
-            error!("failed to parse playlist id");
-            let s = ctx
-                .say("Check your playlist link, we were not able to parse it.")
-                .await;
+    let Some(playlist_id) = extract_playlist_id(service, playlist_link.as_str()) else {
+        error!("failed to parse playlist id");
+        let s = ctx
+            .say("Check your playlist link, we were not able to parse it.")
+            .await;
 
-            return match s {
-                Ok(_) => Err(DiscordError.into()),
-                Err(e) => Err(e.into()),
-            };
-        }
+        return match s {
+            Ok(_) => Err(DiscordError.into()),
+            Err(e) => Err(e.into()),
+        };
     };
 
-    let guild_id = match ctx.guild_id() {
-        Some(i) => i,
-        None => {
-            error!("Failed to get guild id");
-            return Err(DiscordError.into());
-        }
-    }
-    .to_string();
+    let Some(guild_id) = ctx.guild_id() else {
+        error!("Failed to get guild id");
+        return Err(DiscordError.into());
+    };
 
     let discord_id = ctx.author().id.to_string();
     let discord_user_id = discord_id.as_str();
@@ -796,29 +754,28 @@ pub(crate) async fn register_playlist<'a>(
     let user = match get_user_by_discord_user_id(&ctx.data().conn, discord_user_id) {
         Ok(u) => u,
         Err(e) => {
-            error!("failed to get user: {:?}", e);
+            error!("failed to get user: {e}");
             return Err(DiscordError.into());
         }
     };
 
-    let user_id = match user.id {
-        Some(i) => i,
-        None => return Err(DiscordError.into()),
+    let Some(user_id) = user.id else {
+        return Err(DiscordError.into());
     };
 
-    _ = match update_user_guild_playlist_id(
+    match update_user_guild_playlist_id(
         &ctx.data().conn,
-        guild_id,
+        guild_id.to_string(),
         user_id,
         playlist_id,
         service,
     ) {
-        Ok(_) => {}
+        Ok(()) => {}
         Err(e) => {
-            error!("Failed to update playlist id: {:?}", e);
+            error!("Failed to update playlist id: {e}");
             return Err(DiscordError.into());
         }
-    };
+    }
 
     match ctx
         .send(
