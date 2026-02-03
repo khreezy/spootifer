@@ -7,12 +7,12 @@ use prawn::client::{
     OAuthConfig, RetryConfig, TidalClient, TidalClientConfig, TidalClientError, Token,
 };
 use prawn::models::{
-    AlbumsAttributes, AlbumsResourceObject, AlbumsSingleResourceDataDocument, IncludedInner,
-    TracksAttributes, TracksSingleResourceDataDocument,
+    AlbumsAttributes, AlbumsSingleResourceDataDocument, IncludedInner, TracksAttributes,
+    TracksSingleResourceDataDocument,
 };
 use regex::Regex;
 use rspotify::ClientCredsSpotify;
-use rspotify::model::{FullAlbum, FullTrack, Id, SimplifiedAlbum};
+use rspotify::model::{FullAlbum, FullTrack};
 use rspotify::prelude::BaseClient;
 use std::env;
 use std::error::Error;
@@ -34,9 +34,11 @@ impl Display for TidalError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ClientInitializationError { cause } => {
-                write!(f, "failed to initialize client: {}", cause)
+                write!(f, "failed to initialize client: {cause}")
             }
-            Self::ApiError { api, cause } => write!(f, "failed call {} api: {}", api, cause),
+            Self::ApiError { api, cause } => {
+                write!(f, "failed call {api} api: {cause}")
+            }
         }
     }
 }
@@ -51,15 +53,15 @@ impl From<TidalClientError> for TidalError {
     }
 }
 
-pub(crate) fn init_tidal() -> Result<TidalClient> {
+pub fn init_tidal() -> Result<TidalClient> {
     let client_id = env::var("TIDAL_CLIENT_ID")?;
 
     let redirect_uri = get_redirect_uri()?;
 
     let config = TidalClientConfig {
         oauth_config: OAuthConfig {
-            redirect_uri: redirect_uri,
-            client_id: client_id,
+            redirect_uri,
+            client_id,
             client_secret: None,
         },
         auth_token: None,
@@ -69,7 +71,7 @@ pub(crate) fn init_tidal() -> Result<TidalClient> {
     Ok(prawn::client::TidalClient::new(config)?)
 }
 
-pub(crate) async fn init_tidal_with_secret() -> Result<TidalClient> {
+pub async fn init_tidal_with_secret() -> Result<TidalClient> {
     let client_id = env::var("TIDAL_CLIENT_ID")?;
     let client_secret = env::var("TIDAL_CLIENT_SECRET")?;
 
@@ -77,8 +79,8 @@ pub(crate) async fn init_tidal_with_secret() -> Result<TidalClient> {
 
     let config = TidalClientConfig {
         oauth_config: OAuthConfig {
-            redirect_uri: redirect_uri,
-            client_id: client_id,
+            redirect_uri,
+            client_id,
             client_secret: Some(client_secret),
         },
         auth_token: None,
@@ -94,15 +96,15 @@ pub(crate) async fn init_tidal_with_secret() -> Result<TidalClient> {
     Ok(client.with_token(token)?)
 }
 
-pub(crate) fn init_tidal_with_token(token: Token) -> Result<TidalClient> {
+pub fn init_tidal_with_token(token: Token) -> Result<TidalClient> {
     let client_id = env::var("TIDAL_CLIENT_ID")?;
 
     let redirect_uri = get_redirect_uri()?;
 
     let config = TidalClientConfig {
         oauth_config: OAuthConfig {
-            redirect_uri: redirect_uri,
-            client_id: client_id,
+            redirect_uri,
+            client_id,
             client_secret: None,
         },
         auth_token: Some(token),
@@ -112,7 +114,7 @@ pub(crate) fn init_tidal_with_token(token: Token) -> Result<TidalClient> {
     Ok(prawn::client::TidalClient::new(config)?)
 }
 
-pub static DEFAULT_SCOPES: &'static [&'static str] = &[
+pub static DEFAULT_SCOPES: &[&str] = &[
     "user.read collection.read",
     "playlists.write",
     "collection.write",
@@ -122,39 +124,39 @@ pub static DEFAULT_SCOPES: &'static [&'static str] = &[
     "playback",
 ];
 
-pub(crate) fn get_redirect_uri() -> Result<String> {
+pub fn get_redirect_uri() -> Result<String> {
     let base_uri = env::var("BASE_REDIRECT_URI")?;
 
     Ok(format!("{base_uri}/callback"))
 }
 
-pub(crate) fn contains_tidal_link(msg: String) -> bool {
+pub fn contains_tidal_link(msg: &str) -> bool {
     msg.contains(TIDAL_DOMAIN)
 }
 
-pub(crate) fn extract_playlist_id(link: String) -> Option<String> {
+pub fn extract_playlist_id(link: &str) -> Option<String> {
     let re = Regex::new(
         r"https://tidal\.com/playlist/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
     )
     .expect("unable to compile regex");
 
-    Some(re.captures(link.as_str())?.get(1)?.as_str().to_string())
+    Some(re.captures(link)?.get(1)?.as_str().to_string())
 }
 
-pub(crate) fn extract_ids(link: &str) -> Vec<TidalResource> {
+pub fn extract_ids(link: &str) -> Vec<TidalResource> {
     let re = match Regex::new(
         r"(((?:https://tidal\.com/track/|https://tidal\.com/album/)([a-zA-Z0-9]+)))/u",
     ) {
         Ok(re) => re,
         Err(e) => {
-            error!("Failed to compile regex: {}", e);
+            error!("Failed to compile regex: {e}");
             return vec![];
         }
     };
 
     let matches = re.captures_iter(link);
 
-    return matches
+    matches
         .filter_map(|m| -> Option<Vec<TidalResource>> {
             if m.len() > 1 {
                 let link = m.get(1)?.as_str();
@@ -168,19 +170,16 @@ pub(crate) fn extract_ids(link: &str) -> Vec<TidalResource> {
                 None
             }
         })
-        .flat_map(|x| x)
-        .collect();
+        .flatten()
+        .collect()
 }
 
-pub(crate) fn is_album(link: &str) -> bool {
+pub fn is_album(link: &str) -> bool {
     link.contains(TIDAL_ALBUM_LINK)
 }
 
-pub(crate) async fn get_album_track_ids(
-    client: &TidalClient,
-    album_id: String,
-) -> Result<Vec<String>> {
-    info!("getting tracks for album {}", album_id);
+pub async fn get_album_track_ids(client: &TidalClient, album_id: String) -> Result<Vec<String>> {
+    info!("getting tracks for album {album_id}");
     let mut track_ids: Vec<String> = vec![];
     let album_tracks = client
         .albums_api()
@@ -200,7 +199,7 @@ pub(crate) async fn get_album_track_ids(
         album_tracks_data.len(),
     );
     for track_id in album_tracks_data {
-        track_ids.push(track_id.id)
+        track_ids.push(track_id.id);
     }
 
     let mut maybe_next = album_tracks.links.meta;
@@ -218,15 +217,15 @@ pub(crate) async fn get_album_track_ids(
         };
 
         for track_id in album_tracks_data {
-            track_ids.push(track_id.id)
+            track_ids.push(track_id.id);
         }
 
-        maybe_next = album_tracks.links.meta
+        maybe_next = album_tracks.links.meta;
     }
 
     Ok(track_ids)
 }
-pub(crate) async fn get_track_ids(
+pub async fn get_track_ids(
     client: &TidalClient,
     tidal_ids: &Vec<TidalResource>,
 ) -> Result<Vec<String>> {
@@ -238,8 +237,7 @@ pub(crate) async fn get_track_ids(
             TidalResource::Album(id) => match &mut get_album_track_ids(client, id.clone()).await {
                 Ok(v) => track_ids.append(v),
                 Err(e) => {
-                    error!("failed to fetch album ids: {}", e);
-                    continue;
+                    error!("failed to fetch album ids: {e}");
                 }
             },
             TidalResource::Track(id) => track_ids.push(id.clone()),
@@ -255,7 +253,7 @@ pub enum TidalResource {
     Track(String),
 }
 
-pub(crate) async fn get_tidal_ids_from_spotify_resources(
+pub async fn get_tidal_ids_from_spotify_resources(
     tidal_client: &TidalClient,
     spotify_client: &ClientCredsSpotify,
     spotify_resources: &Vec<SpotifyResource>,
@@ -266,30 +264,27 @@ pub(crate) async fn get_tidal_ids_from_spotify_resources(
         let Some(resource) = (match resource {
             SpotifyResource::Album(album) => match_album(tidal_client, album)
                 .await
-                .map_or(None, |id: String| -> Option<TidalResource> {
-                    Some(TidalResource::Album(id.clone()))
-                }),
-            SpotifyResource::Track(track) => match_track(tidal_client, spotify_client, &track)
+                .map(TidalResource::Album),
+
+            SpotifyResource::Track(track) => match_track(tidal_client, spotify_client, track)
                 .await
-                .map_or(None, |id: String| -> Option<TidalResource> {
-                    Some(TidalResource::Track(id.clone()))
-                }),
+                .map(TidalResource::Track),
         }) else {
             warn!("failed to match a tidal resource");
             continue;
         };
 
-        ids.push(resource)
+        ids.push(resource);
     }
 
     Ok(ids)
 }
 
 async fn match_album(tidal_client: &TidalClient, album: &FullAlbum) -> Option<String> {
-    let artist = match album.artists.first() {
-        Some(a) => a.name.as_str(),
-        None => "",
-    };
+    let artist = album
+        .artists
+        .first()
+        .map_or("", |a| -> &str { a.name.as_str() });
 
     let search_string = album.name.clone() + " " + artist;
 
@@ -322,7 +317,7 @@ async fn match_album_with_search(
     {
         Ok(s) => s,
         Err(e) => {
-            error!("failed to do album search: {}", e);
+            error!("failed to do album search: {e}");
             return None;
         }
     };
@@ -344,7 +339,7 @@ async fn match_album_with_search(
         };
         album_matches(attrs.as_ref(), album)
     }) else {
-        error!("no album matched search {}", search_string);
+        error!("no album matched search {search_string}");
         return None;
     };
 
@@ -370,11 +365,8 @@ fn album_matches(attrs: &AlbumsAttributes, full_spotify_album: &FullAlbum) -> bo
     barcode_matches || attrs.title == full_spotify_album.name
 }
 
-fn normalize_track_name(name: String) -> String {
-    name.replace("-", "")
-        .replace("(", "")
-        .replace(")", "")
-        .replace("  ", " ")
+fn normalize_track_name(name: &str) -> String {
+    name.replace(['-', '(', ')'], "").replace("  ", " ")
 }
 
 fn track_matches(tidal_track: &TracksAttributes, spotify_track: &FullTrack) -> bool {
@@ -382,10 +374,10 @@ fn track_matches(tidal_track: &TracksAttributes, spotify_track: &FullTrack) -> b
         "tidal track name {} spotify track name {}",
         tidal_track.title, spotify_track.name
     );
-    let maybe_spotify_isrc = spotify_track.external_ids.get(&"isrc".to_string());
+    let maybe_spotify_isrc = spotify_track.external_ids.get("isrc");
     let maybe_tidal_duration = iso8601::duration(tidal_track.duration.as_str());
-    let normalize_tidal_track_name = normalize_track_name(tidal_track.title.clone());
-    let normalized_spotify_track_name = normalize_track_name(spotify_track.name.clone());
+    let normalize_tidal_track_name = normalize_track_name(tidal_track.title.as_str());
+    let normalized_spotify_track_name = normalize_track_name(spotify_track.name.as_str());
     (maybe_spotify_isrc.is_some() && *maybe_spotify_isrc.unwrap() == tidal_track.isrc)
         || (maybe_tidal_duration.is_ok_and(|d| -> bool {
             spotify_track
@@ -398,7 +390,7 @@ fn track_matches(tidal_track: &TracksAttributes, spotify_track: &FullTrack) -> b
         }) && normalize_tidal_track_name == normalized_spotify_track_name)
 }
 
-fn track_matches_in_list(maybe_track: &&IncludedInner, spotify_track: &FullTrack) -> bool {
+fn track_matches_in_list(maybe_track: &IncludedInner, spotify_track: &FullTrack) -> bool {
     let IncludedInner::Tracks(track) = maybe_track else {
         return false;
     };
@@ -433,7 +425,7 @@ async fn find_track_in_album(
     {
         Ok(s) => s,
         Err(e) => {
-            error!("failed to do search: {}", e);
+            error!("failed to do search: {e}");
             return None;
         }
     };
@@ -445,7 +437,7 @@ async fn find_track_in_album(
         match album_resp {
             Ok(a) => a,
             Err(e) => {
-                error!("failed to get spotify album: {}", e);
+                error!("failed to get spotify album: {e}");
                 return None;
             }
         }
@@ -493,7 +485,7 @@ async fn find_track_in_album(
         .iter()
         .find(|t| -> bool { track_matches_in_list(t, track) })
     else {
-        warn!("failed to match a  track");
+        warn!("failed to match a track");
         return None;
     };
 
@@ -519,7 +511,7 @@ async fn find_track(client: &TidalClient, track: &FullTrack) -> Option<String> {
     {
         Ok(s) => s,
         Err(e) => {
-            error!("failed to do search: {}", e);
+            error!("failed to do search: {e}");
             return None;
         }
     };
@@ -577,8 +569,7 @@ pub async fn get_full_tidal_resources(
                 {
                     Ok(a) => full_resources.push(FullTidalResource::Album(a)),
                     Err(e) => {
-                        error!("error fetching tidal album from api: {}", e);
-                        continue;
+                        error!("error fetching tidal album from api: {e}");
                     }
                 }
             }
@@ -595,8 +586,7 @@ pub async fn get_full_tidal_resources(
                 {
                     Ok(t) => full_resources.push(FullTidalResource::Track(t)),
                     Err(e) => {
-                        error!("error fetching tidal track from api: {}", e);
-                        continue;
+                        error!("error fetching tidal track from api: {e}");
                     }
                 }
             }
@@ -636,7 +626,7 @@ async fn match_spotify_album(
     {
         Ok(s) => s,
         Err(e) => {
-            error!("failed to search for spotify album: {}", e);
+            error!("failed to search for spotify album: {e}");
             return None;
         }
     }) else {
@@ -653,7 +643,7 @@ async fn match_spotify_album(
             continue;
         };
 
-        full_albums.push(full_album)
+        full_albums.push(full_album);
     }
 
     let Some(top_result) = full_albums
@@ -665,7 +655,7 @@ async fn match_spotify_album(
     };
 
     let id = top_result.id.to_string().replace("spotify:album:", "");
-    info!("matched album id: {}", id);
+    info!("matched album id: {id}");
 
     Some(IdType::Album(id))
 }
@@ -708,7 +698,7 @@ async fn match_spotify_track(
     {
         Ok(s) => s,
         Err(e) => {
-            error!("failed to search for spotify album: {}", e);
+            error!("failed to search for spotify album: {e}");
             return None;
         }
     }) else {
@@ -731,13 +721,13 @@ async fn match_spotify_track(
     };
 
     let id = id.to_string().replace("spotify:track:", "");
-    info!("matched track id: {}", id);
+    info!("matched track id: {id}");
 
     Some(IdType::Track(id))
 }
 
 async fn match_spotify_resources(
-    tidal_client: &TidalClient,
+    _: &TidalClient,
     spotify_client: &ClientCredsSpotify,
     tidal_resources: Vec<FullTidalResource>,
 ) -> Vec<IdType> {
@@ -758,7 +748,7 @@ async fn match_spotify_resources(
                     continue;
                 };
 
-                spotify_resource.push(matched_track)
+                spotify_resource.push(matched_track);
             }
         }
     }
@@ -771,7 +761,7 @@ pub async fn extract_resources(
     spotify_client: &ClientCredsSpotify,
     msg: &str,
 ) -> Vec<ServiceResources> {
-    if !contains_tidal_link(msg.to_string()) {
+    if !contains_tidal_link(msg) {
         return vec![];
     }
 
@@ -783,7 +773,7 @@ pub async fn extract_resources(
     let spotify_resources =
         match_spotify_resources(tidal_client, spotify_client, full_tidal_resources).await;
 
-    if spotify_resources.len() > 0 {
+    if !spotify_resources.is_empty() {
         return [
             ServiceResources::Tidal(tidal_resources),
             ServiceResources::Spotify(spotify_resources),

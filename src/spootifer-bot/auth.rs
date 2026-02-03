@@ -27,24 +27,24 @@ impl Error for AuthError {}
 
 impl From<Box<dyn Error>> for AuthError {
     fn from(value: Box<dyn Error>) -> Self {
-        return AuthError {
+        Self {
             msg: value.to_string(),
-        };
+        }
     }
 }
 
 impl From<ClientError> for AuthError {
     fn from(value: ClientError) -> Self {
-        return AuthError {
+        Self {
             msg: value.to_string(),
-        };
+        }
     }
 }
 impl From<Box<dyn StdError + std::marker::Send + Sync>> for AuthError {
     fn from(value: Box<dyn StdError + std::marker::Send + Sync>) -> Self {
-        return AuthError {
+        Self {
             msg: value.to_string(),
-        };
+        }
     }
 }
 
@@ -68,9 +68,9 @@ impl ExchangeToken for AuthCodeSpotify {
         };
 
         match client.request_token(code.as_str()).await {
-            Ok(_) => {}
+            Ok(()) => {}
             Err(e) => return Err(e.into()),
-        };
+        }
 
         let maybe_token = client.get_token();
 
@@ -83,17 +83,16 @@ impl ExchangeToken for AuthCodeSpotify {
             }
         };
 
-        let token = match maybe_token.clone() {
-            Some(t) => t,
-            None => {
-                return Err(AuthError {
-                    msg: String::from("failed to get token"),
-                });
-            }
+        let Some(token) = maybe_token.clone() else {
+            return Err(AuthError {
+                msg: String::from("failed to get token"),
+            });
         };
 
-        token.into_oauth_token(user_id).ok_or(AuthError {
-            msg: String::from("failed to get oauth token from token"),
+        token.into_oauth_token(user_id).ok_or_else(|| -> AuthError {
+            AuthError {
+                msg: String::from("failed to get oauth token from token"),
+            }
         })
     }
 }
@@ -117,23 +116,25 @@ impl ExchangeToken for TidalClient {
             Err(e) => return Err(AuthError { msg: e.to_string() }),
         };
 
-        token.into_oauth_token(user_id).ok_or(AuthError {
-            msg: String::from("failed to get oauth token from token"),
+        token.into_oauth_token(user_id).ok_or_else(|| -> AuthError {
+            AuthError {
+                msg: String::from("failed to get oauth token from token"),
+            }
         })
     }
 }
 
 pub trait IntoOAuthToken {
-    fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken>;
+    fn into_oauth_token(self, user_id: i64) -> Option<OAuthToken>;
 }
 
 impl IntoOAuthToken for prawn::client::Token {
-    fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken> {
+    fn into_oauth_token(self, user_id: i64) -> Option<OAuthToken> {
         Some(OAuthToken {
             user_id,
             refresh_token: self.refresh_token.clone(),
             access_token: self.access_token.clone(),
-            expiry_time: self.expiry.clone(),
+            expiry_time: self.expiry,
             token_type: String::from("Bearer"),
             deleted_at: None,
             created_at: Utc::now().to_rfc3339(),
@@ -144,12 +145,12 @@ impl IntoOAuthToken for prawn::client::Token {
 }
 
 impl IntoOAuthToken for isopod::client::Token {
-    fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken> {
+    fn into_oauth_token(self, user_id: i64) -> Option<OAuthToken> {
         Some(OAuthToken {
             user_id,
             refresh_token: self.refresh_token.clone(),
             access_token: self.access_token.clone(),
-            expiry_time: self.expiry.clone(),
+            expiry_time: self.expiry,
             token_type: String::from("Bearer"),
             deleted_at: None,
             created_at: Utc::now().to_rfc3339(),
@@ -160,7 +161,7 @@ impl IntoOAuthToken for isopod::client::Token {
 }
 
 impl IntoOAuthToken for rspotify::Token {
-    fn into_oauth_token(&self, user_id: i64) -> Option<OAuthToken> {
+    fn into_oauth_token(self, user_id: i64) -> Option<OAuthToken> {
         Some(OAuthToken {
             user_id,
             refresh_token: self.refresh_token.clone(),
@@ -188,8 +189,10 @@ impl ExchangeToken for YoutubeClient {
             Err(e) => return Err(AuthError { msg: e.to_string() }),
         };
 
-        token.into_oauth_token(user_id).ok_or(AuthError {
-            msg: String::from("failed to get oauth token from token"),
+        token.into_oauth_token(user_id).ok_or_else(|| -> AuthError {
+            AuthError {
+                msg: String::from("failed to get oauth token from token"),
+            }
         })
     }
 }

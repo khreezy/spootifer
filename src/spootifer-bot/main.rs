@@ -50,14 +50,13 @@ async fn main() {
     if args.migrate {
         info!("migrating");
         db::run_migrations(mutex_conn)
-            .unwrap_or_else(|e| panic!("got error performing migrations: {:?}", e));
+            .unwrap_or_else(|e| panic!("got error performing migrations: {e}"));
         exit(0)
     }
 
     let conn = Arc::new(mutex_conn);
 
-    let credentials: Credentials =
-        Credentials::from_env().unwrap_or_else(|| panic!("Spotify credentials not set!"));
+    let credentials: Credentials = Credentials::from_env().expect("Spotify credentials not set!");
 
     let spotify_client: ClientCredsSpotify = ClientCredsSpotify::new(credentials);
 
@@ -69,7 +68,7 @@ async fn main() {
     let tidal_client = match tidal::init_tidal_with_secret().await {
         Ok(c) => c,
         Err(e) => {
-            panic!("error initializing tidal client: {}", e)
+            panic!("error initializing tidal client: {e}")
         }
     };
 
@@ -136,14 +135,14 @@ async fn start_auth_server(conn: Arc<Mutex<Connection>>) -> Result<(), Box<dyn E
     let listener = match tokio::net::TcpListener::bind("0.0.0.0:8081").await {
         Ok(l) => l,
         Err(e) => {
-            panic!("Error starting server {}", e);
+            panic!("Error starting server {e}");
         }
     };
 
     info!("started auth listener");
     match axum::serve(listener, app).await {
-        Ok(_) => Ok(()),
-        Err(_) => panic!("oh no! couldn't start server"),
+        Ok(()) => Ok(()),
+        Err(e) => panic!("oh no! couldn't start server: {e}"),
     }
 }
 
@@ -158,7 +157,7 @@ async fn complete_auth(
     ) {
         Ok(a) => a,
         Err(e) => {
-            error!("error fetching auth request: {}", e);
+            error!("error fetching auth request: {e}");
             return (
                 StatusCode::UNAUTHORIZED,
                 "Unauthorized: auth request not found".to_string(),
@@ -170,7 +169,7 @@ async fn complete_auth(
     {
         Ok(u) => u,
         Err(e) => {
-            error!("failed to get user: {}", e);
+            error!("failed to get user: {e}");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Internal Server Error".to_string(),
@@ -178,14 +177,11 @@ async fn complete_auth(
         }
     };
 
-    let user_id = match user.id {
-        Some(i) => i,
-        None => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "user id missing".to_string(),
-            );
-        }
+    let Some(user_id) = user.id else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "user id missing".to_string(),
+        );
     };
 
     let maybe_oauth_token = match auth_request.for_service.as_str() {
@@ -204,13 +200,13 @@ async fn complete_auth(
 
     let auth_token = match maybe_oauth_token {
         Ok(o) => o,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("{:?}", e)),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")),
     };
 
     let mut conn = match state.conn.try_lock() {
         Ok(c) => c,
         Err(e) => {
-            error!("error locking: {}", e);
+            error!("error locking: {e}");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Internal Server Error".to_string(),
@@ -221,7 +217,7 @@ async fn complete_auth(
     let tx = match conn.transaction() {
         Ok(t) => t,
         Err(e) => {
-            error!("Error opening transaction: {}", e);
+            error!("Error opening transaction: {e}");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Internal Server Error".to_string(),
@@ -229,10 +225,10 @@ async fn complete_auth(
         }
     };
 
-    match insert_oauth_token(&tx, auth_token) {
-        Ok(_) => {}
+    let commit_result = match insert_oauth_token(&tx, auth_token) {
+        Ok(_) => tx.commit(),
         Err(e) => {
-            error!("Error creating auth token: {}", e);
+            error!("Error creating auth token: {e}");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Internal Server Error".to_string(),
@@ -240,10 +236,12 @@ async fn complete_auth(
         }
     };
 
-    match tx.commit() {
-        Ok(_) => (StatusCode::OK, "Authorized!".to_string()),
+    drop(conn);
+
+    match commit_result {
+        Ok(()) => (StatusCode::OK, "Authorized!".to_string()),
         Err(e) => {
-            error!("Error committing transaction: {}", e);
+            error!("Error committing transaction: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Internal Server Error".to_string(),
